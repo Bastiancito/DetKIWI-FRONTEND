@@ -1,0 +1,38 @@
+.dashboard-view .app-breadcrumb {
+    margin-bottom: 0;
+}
+
+.dashboard-view .app-breadcrumb .breadcrumb-item button {
+    background: none;
+    border: 0;
+    color: var(--bs-primary);
+    font-weight: 600;
+    padding: 0;
+}
+
+.dashboard-view .app-breadcrumb .breadcrumb-item.active {
+    font-weight: 700;
+}
+
+.dashboard-view .casos-placeholder {
+    min-height: 24rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.dashboard-view .placeholder-content {
+    max-width: 40rem;
+}
+
+.dashboard-view .placeholder-info {
+    padding: 1.25rem;
+    border-radius: var(--bs-border-radius-xl);
+    background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(14, 165, 233, 0.12));
+    border: 1px solid rgba(15, 118, 110, 0.14);
+}
+
+.dashboard-view .placeholder-info p:last-child {
+    margin-bottom: 0;
+}
