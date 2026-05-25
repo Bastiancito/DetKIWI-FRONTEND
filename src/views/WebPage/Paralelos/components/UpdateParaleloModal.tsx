@@ -57,7 +57,7 @@ const UpdateParaleloModal: React.FC<UpdateParaleloModalProps> = ({ show, paralel
 
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (!paraleloId || !sedeId) {
+        if (!paraleloId || !nombre.trim()) {
             setError('Debes completar todos los campos');
             return;
         }
@@ -65,10 +65,15 @@ const UpdateParaleloModal: React.FC<UpdateParaleloModalProps> = ({ show, paralel
         setSaving(true);
         setError('');
         try {
-            await paralelosService.updateParalelo(paraleloId, {
-                nombre,
-                sede_id: sedeId
-            });
+            const payload: { nombre: string; sede_id?: number } = {
+                nombre: nombre.trim()
+            };
+
+            if (sedeId !== '') {
+                payload.sede_id = sedeId;
+            }
+
+            await paralelosService.updateParalelo(paraleloId, payload);
 
             onParaleloUpdated();
             handleClose();
@@ -108,15 +113,17 @@ const UpdateParaleloModal: React.FC<UpdateParaleloModalProps> = ({ show, paralel
                                 <Form.Select
                                     value={sedeId}
                                     onChange={(e) => setSedeId(e.target.value ? Number(e.target.value) : '')}
-                                    required
                                 >
-                                    <option value="">Seleccionar sede</option>
+                                    <option value="">Sin sede por ahora</option>
                                     {sedes.map((sede) => (
                                         <option key={sede.sede_id} value={sede.sede_id}>
                                             {sede.nombre}
                                         </option>
                                     ))}
                                 </Form.Select>
+                                <Form.Text className="text-secondary">
+                                    Si este paralelo aún no tiene sede, puedes dejarlo así o elegir una para vincularlo.
+                                </Form.Text>
                             </Form.Group>
                         </div>
                     )}

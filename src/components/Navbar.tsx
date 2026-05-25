@@ -34,17 +34,27 @@ const Navbar: React.FC<NavbarProps> = ({ className = '' }) => {
 
         <BootstrapNavbar.Collapse id="app-navbar-nav">
           <Nav className="me-auto gap-lg-2 py-3 py-lg-0">
-            {NAVIGATION_ITEMS.map((item) => (
-              <Nav.Link
-                as={Link}
-                to={item.path}
-                key={item.path}
-                active={location.pathname === item.path}
-                className="app-nav-link"
-              >
-                {item.name}
-              </Nav.Link>
-            ))}
+            {(() => {
+              // Determine which navigation items to show based on backend permissions or role
+              let items = NAVIGATION_ITEMS as typeof NAVIGATION_ITEMS;
+
+              if (currentUser && currentUser.rol_id === 2) {
+                // profesor: only show "Mis casos" and "Casos sancionados"
+                items = NAVIGATION_ITEMS.filter((it) => it.name === 'Mis casos' || it.name === 'Casos sancionados' || it.name === 'Paralelos');
+              }
+
+              return items.map((item) => (
+                <Nav.Link
+                  as={Link}
+                  to={item.path}
+                  key={item.path}
+                  active={location.pathname === item.path}
+                  className="app-nav-link"
+                >
+                  {item.name}
+                </Nav.Link>
+              ));
+            })()}
           </Nav>
 
           <div className="nav-user ms-lg-3">

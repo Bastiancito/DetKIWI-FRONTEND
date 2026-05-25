@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { estudianteService } from '../../../crud';
 import type { Estudiante } from '../../../crud';
+import RequireRole from '../../../components/RequireRole';
 
 interface EstudianteDraft {
   nombre: string;
@@ -195,6 +196,7 @@ const Estudiantes: React.FC = () => {
   };
 
   return (
+    <RequireRole allowedRoles={[1]}>
     <div className="w-100">
       <Row className="g-4">
         <Col xs={12}>
@@ -202,7 +204,6 @@ const Estudiantes: React.FC = () => {
             <Card.Body className="p-4 p-lg-5 d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
               <div>
                 <h1 className="page-title h2 fw-bold mb-2">Estudiantes</h1>
-                <p className="text-secondary mb-0">Administra y consulta el listado de estudiantes.</p>
               </div>
               <Badge bg="primary" pill className="fs-6 px-3 py-2 align-self-start align-self-lg-center">
                 {estudiantes.length} estudiantes
@@ -302,7 +303,6 @@ const Estudiantes: React.FC = () => {
                     <tr>
                       <th>ID</th>
                       <th>Nombre</th>
-                      <th>Apellido</th>
                       <th>Paralelo</th>
                       <th>Sanciones</th>
                       <th>Profesores Sancionadores</th>
@@ -314,8 +314,7 @@ const Estudiantes: React.FC = () => {
                       <tr key={estudiante.estudiante_id}>
                         <td>{estudiante.estudiante_id}</td>
                         <td>{estudiante.nombre}</td>
-                        <td>{estudiante.apellido}</td>
-                        <td>{estudiante.paralelo_sigla || 'Sin paralelo'}</td>
+                        <td>{estudiante.paralelo_sigla ? <Badge bg="light" text="dark" pill className="border">{estudiante.paralelo_sigla}</Badge> : 'Sin paralelo'}</td>
                         <td>{estudiante.sanciones?.length ?? 0}</td>
                         <td>{getProfesoresLabel(estudiante.sanciones || [])}</td>
                         <td className="text-end">
@@ -425,6 +424,7 @@ const Estudiantes: React.FC = () => {
         </Form>
       </Modal>
     </div>
+    </RequireRole>
   );
 };
 

@@ -4,18 +4,28 @@ import { getBaseURL } from './config';
 interface Paralelo {
   paralelo_id: number;
   nombre: string;
-  sede_id: number;
-  sede_nombre?: string;
+  sede_id?: number | null;
+  sede_nombre?: string | null;
+  usuario?: {
+    user_id: number;
+    username: string;
+    email: string;
+  };
+  usuarios?: Array<{
+    user_id: number;
+    username: string;
+    email: string;
+  }>;
 }
 
 interface CreateParaleloData {
   nombre: string;
-  sede_id: number;
+  sede_id?: number | null;
 }
 
 interface UpdateParaleloData {
   nombre?: string;
-  sede_id?: number;
+  sede_id?: number | null;
 }
 
 interface ApiResponse<T> {
@@ -121,6 +131,30 @@ class ParalelosService {
         data: null,
         status: error.response?.status || 500,
         message: error.response?.data?.error || 'Error al crear paralelo'
+      };
+    }
+  }
+
+  async vincularSedeAParalelo(paraleloId: number, sedeId: number): Promise<ApiResponse<Paralelo>> {
+    try {
+      const response = await axios.post(
+        `${this.baseURL}/paralelos/VincularSedeAParalelo/${paraleloId}`,
+        { sede_id: sedeId },
+        {
+          headers: this.getAuthHeaders()
+        }
+      );
+
+      return {
+        data: response.data,
+        status: response.status,
+        message: 'Sede vinculada al paralelo exitosamente'
+      };
+    } catch (error: any) {
+      throw {
+        data: null,
+        status: error.response?.status || 500,
+        message: error.response?.data?.error || 'Error al vincular sede al paralelo'
       };
     }
   }

@@ -14,7 +14,14 @@ interface LoginResponse {
     id: number;
     username: string;
     email: string;
+    rol_id: number;
+    paralelos: ParaleloLoginResponse[] | null;
   };
+}
+
+interface ParaleloLoginResponse { 
+  paralelo_id: number;
+  sigla_paralelo: string;
 }
 
 interface RegisterData {
@@ -319,6 +326,7 @@ class AuthService {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   }
+ 
 }
 
 const authService = new AuthService();

@@ -13,7 +13,7 @@ import periodosService from './periodos';
 import { getBaseURL, setEnvironment, getConfig } from './config';
 
 export type { LoginCredentials, LoginResponse, RegisterData } from './auth';
-export type { User, CreateUserData, UpdateUserData } from './users';
+export type { User, CreateUserData, UpdateUserData, UploadParticipantesResponse } from './users';
 export type { Estudiante, CreateEstudianteData, UpdateEstudianteData } from './estudiante';
 export type { Paralelo, CreateParaleloData, UpdateParaleloData } from './paralelos';
 export type { Rol, CreateRolData, UpdateRolData } from './roles';
@@ -22,6 +22,7 @@ export type {
   Reporte, 
   ReporteUploadData, 
   ReporteResponse, 
+  ReporteUploadResponse,
   CasoSimilitud 
 } from './reporte';
 export type { Estadisticas, LimpiarResponse } from './admin';

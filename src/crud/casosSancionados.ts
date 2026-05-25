@@ -9,14 +9,14 @@ interface EstudianteSancionado {
 }
 
 interface ProfesorInvolucrado {
-  username?: string;
-  email?: string;
+  nombre?: string;
+  
 }
 
 interface CasoSancionado {
   sancion_id: number;
   caso_id: number;
-  estudiantes_involucrados: Record<string, EstudianteSancionado>;
+  estudiantes_involucrados?: Record<string, EstudianteSancionado>;
   profesores_involucrados?: Record<string, ProfesorInvolucrado>;
   descripcion_sancion: string;
   fecha_sancion: string | null;

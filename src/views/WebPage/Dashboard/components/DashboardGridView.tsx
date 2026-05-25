@@ -18,11 +18,16 @@ export interface ParaleloCardData {
     total_casos: number;
     total_casos_pendientes: number;
     total_casos_resueltos: number;
-    usuarios_asignados: Array<{
+    usuarios_asignados?: Array<{
         user_id: number;
         username: string;
         email: string;
     }>;
+    usuario?: {
+        user_id: number;
+        username: string;
+        email?: string;
+    };
 }
 
 export interface DashboardGridViewProps {
@@ -41,44 +46,45 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
     onParaleloClick
 }) => {
     const [loading, setLoading] = useState(true);
-    const [sedesData, setSedesData] = useState<SedeCardData[]>([]);
+    const [sedesData, setSedesData] = useState<any[]>([]);
     const [paralelosData, setParalelosData] = useState<ParaleloCardData[]>([]);
 
     useEffect(() => {
         fetchData();
     }, [type, evaluacionId, sedeId]);
 
+    useEffect(() => {
+        console.log('Paralelos data:', paralelosData);
+    }, [paralelosData]);
+
     const fetchData = async () => {
         setLoading(true);
         try {
             if (type === 'sedes') {
-                const sedesResponse = await services.sedes.getAllSedes();
-                if (sedesResponse.status === 200) {
-                    const sedesWithStats = await Promise.all(
-                        sedesResponse.data.map(async (sede: any) => {
-                            try {
-                                const statsResponse = await services.casos.getStatsCasosBySedeIdAndEvaluacionId(
-                                    sede.sede_id,
-                                    evaluacionId
-                                );
-                                return {
-                                    sede_id: sede.sede_id,
-                                    nombre: sede.nombre,
-                                    total_casos: statsResponse.data.total_casos || 0,
-                                    total_casos_pendientes: statsResponse.data.total_casos_pendientes || 0,
-                                    total_casos_resueltos: statsResponse.data.total_casos_resueltos || 0,
-                                };
-                            } catch (error) {
-                                return {
-                                    sede_id: sede.sede_id,
-                                    nombre: sede.nombre,
-                                    total_casos: 0,
-                                    total_casos_pendientes: 0,
-                                    total_casos_resueltos: 0,
-                                };
-                            }
-                        })
-                    );
+                // Obtener sedes y stats por sede en batch desde backend (endpoint nuevo).
+                const [sedesResponse, statsSedesResponse] = await Promise.all([
+                    services.sedes.getAllSedes(),
+                    services.casos.getStatsCasosForSedesByEvaluacionId(evaluacionId)
+                ]);
+
+                if (sedesResponse.status === 200 && statsSedesResponse.status === 200) {
+                    const sedes = sedesResponse.data as any[];
+                    const statsList = statsSedesResponse.data as any[];
+
+                    const statsBySede = new Map<number, any>();
+                    statsList.forEach((s: any) => statsBySede.set(s.sede_id, s));
+
+                    const sedesWithStats = sedes.map((sede: any) => {
+                        const st = statsBySede.get(sede.sede_id) || { total_casos: 0, total_casos_pendientes: 0, total_casos_resueltos: 0 };
+                        return {
+                            sede_id: sede.sede_id,
+                            nombre: sede.nombre,
+                            total_casos: st.total_casos || 0,
+                            total_casos_pendientes: st.total_casos_pendientes || 0,
+                            total_casos_resueltos: st.total_casos_resueltos || 0,
+                        };
+                    });
+
                     setSedesData(sedesWithStats);
                 }
             } else if (type === 'paralelos' && sedeId) {
@@ -87,6 +93,7 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
                     sedeId
                 );
                 if (response.status === 200) {
+                    console.log('Paralelos response:', response.data);
                     setParalelosData(response.data);
                 }
             }
@@ -161,61 +168,66 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
         </Col>
     );
 
-    const renderParaleloCard = (paralelo: ParaleloCardData) => (
-        <Col key={paralelo.paralelo_id} md={6} xl={4}>
-        <Card 
-            key={paralelo.paralelo_id} 
-            className="dashboard-grid-card paralelo-card interactive-card h-100 border-0"
-            onClick={() => handleParaleloClick(paralelo)}
-        >
-            <Card.Body className="p-4">
-                <div className="d-flex justify-content-between align-items-start gap-3 mb-4">
-                    <div>
-                        <h3 className="h5 fw-bold mb-1">{paralelo.paralelo}</h3>
-                        <p className="text-secondary small mb-0">Resumen del paralelo seleccionado</p>
-                    </div>
-                    <Badge pill bg="info-subtle" text="info-emphasis" className="card-type-badge">Paralelo</Badge>
-                </div>
+    const renderParaleloCard = (paralelo: ParaleloCardData) => {
+        console.log('Paralelo:', paralelo);
+        const displayedUser = paralelo.usuario?.user_id ? paralelo.usuario : paralelo.usuarios_asignados?.[0];
 
-                <div className="stat-row">
-                    <span className="stat-label">Total de casos</span>
-                    <span className="stat-value">{paralelo.total_casos}</span>
-                </div>
-                <div className="stat-row">
-                    <span className="stat-label">Pendientes</span>
-                    <span className="stat-value pending">{paralelo.total_casos_pendientes}</span>
-                </div>
-                <div className="stat-row">
-                    <span className="stat-label">Resueltos</span>
-                    <span className="stat-value resolved">{paralelo.total_casos_resueltos}</span>
-                </div>
-                <div className="stat-row stat-highlight">
-                    <span className="stat-label">Porcentaje resuelto</span>
-                    <span className="stat-value">{calculatePercentage(paralelo.total_casos_resueltos, paralelo.total_casos)}%</span>
-                </div>
-                {paralelo.usuarios_asignados && paralelo.usuarios_asignados.length > 0 && (
-                    <div className="users-panel mt-4">
-                        <span className="stat-label d-block mb-2">Usuarios asignados</span>
-                        <div className="usuarios-list">
-                            {paralelo.usuarios_asignados.map((usuario) => (
-                                <Badge 
-                                    key={usuario.user_id}
+        return (
+            <Col key={paralelo.paralelo_id} md={6} xl={4}>
+            <Card 
+                key={paralelo.paralelo_id} 
+                className="dashboard-grid-card paralelo-card interactive-card h-100 border-0"
+                onClick={() => handleParaleloClick(paralelo)}
+            >
+                <Card.Body className="p-4">
+                    <div className="d-flex justify-content-between align-items-start gap-3 mb-4">
+                        <div>
+                            <h3 className="h5 fw-bold mb-1">{paralelo.paralelo}</h3>
+                            <p className="text-secondary small mb-0">Resumen del paralelo seleccionado</p>
+                        </div>
+                        <Badge pill bg="info-subtle" text="info-emphasis" className="card-type-badge">Paralelo</Badge>
+                    </div>
+
+                    <div className="stat-row">
+                        <span className="stat-label">Total de casos</span>
+                        <span className="stat-value">{paralelo.total_casos}</span>
+                    </div>
+                    <div className="stat-row">
+                        <span className="stat-label">Pendientes</span>
+                        <span className="stat-value pending">{paralelo.total_casos_pendientes}</span>
+                    </div>
+                    <div className="stat-row">
+                        <span className="stat-label">Resueltos</span>
+                        <span className="stat-value resolved">{paralelo.total_casos_resueltos}</span>
+                    </div>
+                    <div className="stat-row stat-highlight">
+                        <span className="stat-label">Porcentaje resuelto</span>
+                        <span className="stat-value">{calculatePercentage(paralelo.total_casos_resueltos, paralelo.total_casos)}%</span>
+                    </div>
+                    {/* Mostrar solo el encargado del paralelo si está disponible en `paralelo.usuario`.
+                        Si no existe, mostrar la lista `usuarios_asignados` (fallback). */}
+                    {displayedUser && (
+                        <div className="users-panel mt-4">
+                            <span className="stat-label d-block mb-2">Usuarios asignado</span>
+                            <div className="usuarios-list">
+                                <Badge
+                                    key={displayedUser.user_id}
                                     bg="light"
                                     text="dark"
                                     pill
                                     className="usuario-badge border"
-                                    title={usuario.email}
+                                    title={displayedUser.email}
                                 >
-                                    {usuario.username}
+                                    {displayedUser.username}
                                 </Badge>
-                            ))}
+                            </div>
                         </div>
-                    </div>
-                )}
-            </Card.Body>
-        </Card>
-        </Col>
-    );
+                    )}
+                </Card.Body>
+            </Card>
+            </Col>
+        );
+    };
 
     const noDataMessage = type === 'sedes' 
         ? 'No hay sedes disponibles'

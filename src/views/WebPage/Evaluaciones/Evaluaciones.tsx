@@ -7,6 +7,7 @@ import type { Periodo } from '../../../crud/periodos';
 import CreateEvaluacionModal from './components/CreateEvaluacionModal';
 import CreatePeriodoModal from './components/CreatePeriodoModal';
 import UpdateEvaluacionModal from './components/UpdateEvaluacionModal';
+import RequireRole from '../../../components/RequireRole';
 
 
 const Evaluaciones: React.FC = () => {
@@ -203,6 +204,7 @@ const Evaluaciones: React.FC = () => {
     const selectedPeriodo = periodos.find((periodo) => periodo.periodo_id === selectedPeriodoId);
 
     return (
+        <RequireRole allowedRoles={[1]}>
         <Row className="g-4">
             <Col xs={12}>
                 <Card className="surface-card page-hero border-0">
@@ -379,6 +381,7 @@ const Evaluaciones: React.FC = () => {
                 onUpdated={handleUpdatedEvaluacion}
             />
         </Row>
+        </RequireRole>
     );
 };
 

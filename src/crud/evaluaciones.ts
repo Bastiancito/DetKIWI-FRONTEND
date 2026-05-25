@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getBaseURL } from './config';
+import type { Caso } from './casos';
 
 interface Evaluacion {
   evaluacion_id: number;
@@ -242,8 +243,17 @@ class EvaluacionesService {
     max_similitud?: number;
     closed?: boolean;
   }): Promise<ApiResponse<{
-    total: number;
-    casos: any[];
+    evaluacion?: {
+      evaluacion_id: number;
+      nombre: string;
+      descripcion?: string;
+      periodo?: {
+        periodo_id: number;
+        nombre: string;
+      };
+    };
+    total_casos: number;
+    casos: Caso[];
   }>> {
     try {
       const params = new URLSearchParams();

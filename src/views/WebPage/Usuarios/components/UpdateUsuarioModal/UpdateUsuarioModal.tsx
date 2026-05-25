@@ -175,7 +175,7 @@ const UpdateUsuarioModal: React.FC<UpdateUsuarioModalProps> = ({ show, userId, o
                                             <option value="">Seleccionar paralelo</option>
                                             {paralelos.map((paralelo) => (
                                                 <option key={paralelo.paralelo_id} value={paralelo.paralelo_id}>
-                                                    {paralelo.nombre}{getEncargadoNombre(paralelo) ? ` - Encargado: ${getEncargadoNombre(paralelo)}` : ''}
+                                                    {paralelo.nombre}{paralelo.sede_nombre ? ` - ${paralelo.sede_nombre}` : ' - Sin sede'}{getEncargadoNombre(paralelo) ? ` - Encargado: ${getEncargadoNombre(paralelo)}` : ''}
                                                 </option>
                                             ))}
                                         </Form.Select>
@@ -195,7 +195,7 @@ const UpdateUsuarioModal: React.FC<UpdateUsuarioModalProps> = ({ show, userId, o
                                                 <ListGroup.Item key={paralelo.paralelo_id} className="d-flex justify-content-between align-items-center">
                                                     <div className="d-flex align-items-center gap-2">
                                                         <span>{paralelo.nombre}</span>
-                                                        {paralelo.sede_nombre && <Badge bg="secondary">{paralelo.sede_nombre}</Badge>}
+                                                        {paralelo.sede_nombre ? <Badge bg="secondary">{paralelo.sede_nombre}</Badge> : <Badge bg="warning" text="dark">Sin sede</Badge>}
                                                         {getEncargadoNombre(paralelo) && <Badge bg="warning" text="dark">Encargado: {getEncargadoNombre(paralelo)}</Badge>}
                                                     </div>
                                                     <Button

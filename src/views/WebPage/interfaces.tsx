@@ -11,8 +11,8 @@ export interface Usuario {
 export interface Paralelo {
     paralelo_id: number;
     nombre: string;
-    sede_id: number;
-    sede_nombre?: string;
+    sede_id?: number | null;
+    sede_nombre?: string | null;
     usuario?: {
         user_id: number;
         username: string;

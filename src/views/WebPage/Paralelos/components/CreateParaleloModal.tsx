@@ -62,37 +62,39 @@ const CreateParaleloModal: React.FC<CreateParaleloModalProps> = ({ show, onClose
         onClose();
     };
 
-    const handleAddOneParalelo = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
+    const handleAddOneParalelo = (event?: React.FormEvent<HTMLFormElement>) => {
+        event?.preventDefault();
         setError('');
+
         const nombreNormalizado = nombre.trim();
-        if (!sedeId) {
-            setError('Debes seleccionar una sede');
-            return;
-        }
         if (!nombreNormalizado) {
             setError('Debes ingresar el nombre del paralelo');
             return;
         }
-        const sedeSeleccionada = sedes.find((sede) => sede.sede_id === sedeId);
-        if (!sedeSeleccionada) {
-            setError('La sede seleccionada no es valida');
-            return;
+
+        const payload: { nombre: string; sede_id?: number } = {
+            nombre: nombreNormalizado
+        };
+
+        if (sedeId) {
+            const sedeSeleccionada = sedes.find((sede) => sede.sede_id === sedeId);
+            if (!sedeSeleccionada) {
+                setError('La sede seleccionada no es valida');
+                return;
+            }
+
+            payload.sede_id = sedeId;
         }
 
         setSaving(true);
-        paralelosService.createParalelo({
-            nombre: nombreNormalizado,
-            sede_id: sedeId
-        }).then(() => {
+        paralelosService.createParalelo(payload).then(() => {
             onParaleloCreated();
             resetForm();
         }).catch(() => {
             setError('Error al crear el paralelo');
         }).finally(() => {
             setSaving(false);
-        }
-        );
+        });
     };
 
     const handleAddParalelo = (event: React.FormEvent<HTMLFormElement>) => {
@@ -168,7 +170,7 @@ const CreateParaleloModal: React.FC<CreateParaleloModalProps> = ({ show, onClose
 
     const handleCreate = () => {
         if (paralelosPendientes.length === 0) {
-            handleAddOneParalelo(new Event('submit') as any);
+            handleAddOneParalelo();
         } else {
             handleCreateListado();
         }
@@ -200,16 +202,18 @@ const CreateParaleloModal: React.FC<CreateParaleloModalProps> = ({ show, onClose
                             <Form.Select
                                 value={sedeId}
                                 onChange={(e) => setSedeId(e.target.value ? Number(e.target.value) : '')}
-                                required
                                 disabled={loadingCatalogs}
                             >
-                                <option value="">Seleccionar sede</option>
+                                <option value="">Sin sede por ahora</option>
                                 {sedes.map((sede) => (
                                     <option key={sede.sede_id} value={sede.sede_id}>
                                         {sede.nombre}
                                     </option>
                                 ))}
                             </Form.Select>
+                            <Form.Text className="text-secondary">
+                                Puedes dejarla vacía para crear el paralelo sin sede y vincularlo después.
+                            </Form.Text>
                         </Form.Group>
 
                         <div className="d-flex justify-content-end">
@@ -219,7 +223,6 @@ const CreateParaleloModal: React.FC<CreateParaleloModalProps> = ({ show, onClose
                         </div>
 
                         <div>
-                            
                             <Form.Label className="fw-semibold">Paralelos en lista</Form.Label>
                             {paralelosPendientes.length === 0 ? (
                                 <div className="text-secondary small">Aun no hay paralelos agregados.</div>
@@ -245,14 +248,13 @@ const CreateParaleloModal: React.FC<CreateParaleloModalProps> = ({ show, onClose
                                 </div>
                             )}
                         </div>
-
                     </div>
                 </Modal.Body>
                 <Modal.Footer>
                     <Button type="button" variant="outline-secondary" onClick={handleClose} disabled={saving}>
                         Cancelar
                     </Button>
-                    <Button type="button" variant="primary" disabled={saving || loadingCatalogs || !nombre.trim() || !sedeId} onClick={handleCreate}>
+                    <Button type="button" variant="primary" disabled={saving || loadingCatalogs || (paralelosPendientes.length === 0 && !nombre.trim())} onClick={handleCreate}>
                         {saving ? 'Creando...' : paralelosPendientes.length === 0 ? 'Crear paralelo' : 'Crear listado'}
                     </Button>
                 </Modal.Footer>

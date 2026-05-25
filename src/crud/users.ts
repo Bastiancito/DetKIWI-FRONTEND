@@ -9,9 +9,16 @@ interface User {
   paralelos?: Array<{
     paralelo_id: number;
     nombre: string;
-    sede_id: number;
-    sede_nombre?: string;
+    sede_id?: number | null;
+    sede_nombre?: string | null;
   }>;
+}
+
+interface UploadParticipantesResponse {
+  msg: string;
+  total_procesados: number;
+  usuarios_creados: number;
+  usuarios_actualizados: number;
 }
 
 interface CreateUserData {
@@ -51,6 +58,13 @@ class UsersService {
     const token = this.getToken();
     return {
       'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : '',
+    };
+  }
+
+  private getFileUploadHeaders() {
+    const token = this.getToken();
+    return {
       'Authorization': token ? `Bearer ${token}` : '',
     };
   }
@@ -234,9 +248,32 @@ class UsersService {
       };
     }
   }
+
+  async uploadParticipantes(file: File): Promise<ApiResponse<UploadParticipantesResponse>> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post(`${this.baseURL}/users/upload_participantes`, formData, {
+        headers: this.getFileUploadHeaders()
+      });
+
+      return {
+        data: response.data,
+        status: response.status,
+        message: 'Participantes cargados exitosamente'
+      };
+    } catch (error: any) {
+      throw {
+        data: error.response?.data || null,
+        status: error.response?.status || 500,
+        message: error.response?.data?.msg || error.response?.data?.error || 'Error al cargar participantes'
+      };
+    }
+  }
 }
 
 const usersService = new UsersService();
 
 export default usersService;
-export type { User, CreateUserData, UpdateUserData, ApiResponse };
+export type { User, CreateUserData, UpdateUserData, ApiResponse, UploadParticipantesResponse };

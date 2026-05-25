@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Alert, Badge, Card, Col, ListGroup, Row, Spinner } from 'react-bootstrap';
 import sedesService from '../../../crud/sedes'
+import RequireRole from '../../../components/RequireRole';
 import type { Sede } from '../interfaces';
 
 const Sedes: React.FC = () => {
@@ -30,6 +31,7 @@ const Sedes: React.FC = () => {
     }, []);
 
     return(
+        <RequireRole allowedRoles={[1]}>
         <div className="w-100">
             <Row className="g-4">
                 <Col xs={12}>
@@ -73,6 +75,7 @@ const Sedes: React.FC = () => {
                 </Col>
             </Row>
         </div>
+        </RequireRole>
     );
 }
 

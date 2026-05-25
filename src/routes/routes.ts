@@ -41,7 +41,7 @@ export const NAVIGATION_ITEMS = [
     requiresAuth: true
   },
   {
-    name: 'Mis casos',
+    name: 'Paralelos',
     path: ROUTES.PARALELOS,
     icon: 'user-group',
     requiresAuth: true
@@ -57,15 +57,15 @@ export const NAVIGATION_ITEMS = [
     path: ROUTES.CASOS_SANCIONADOS,
     icon: 'exclamation-triangle',
     requiresAuth: true
-  },
+  },/*
   {
     name: 'Reportes',
     path: ROUTES.REPORTES,
     icon: 'document-chart-bar',
     requiresAuth: true
-  },
+  },*/
   {
-    name: 'Subir Excel',
+    name: 'Subir casos',
     path: ROUTES.UPLOAD_EXCEL,
     icon: 'arrow-up-tray',
     requiresAuth: true

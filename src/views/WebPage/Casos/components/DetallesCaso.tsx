@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Form, Modal, Spinner } from "react-bootstrap";
+import { Alert, Button, Form, Modal } from "react-bootstrap";
 import { services } from '../../../../crud';
 import type { Caso, ComentarioProfesor } from '../../../../crud';
 
@@ -11,7 +11,6 @@ interface DetallesCasoProps {
 
 const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdated }) => {
     const [detalleCaso, setDetalleCaso] = useState<Caso>(caso);
-    const [loadingDetalle, setLoadingDetalle] = useState(false);
     const [comentario, setComentario] = useState('');
     const [sancionComentario, setSancionComentario] = useState('');
     const [enviandoComentario, setEnviandoComentario] = useState(false);
@@ -19,6 +18,7 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
     const [showSancionModal, setShowSancionModal] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const currentUser = services.auth.getCurrentUser();
 
     const comentariosCaso = useMemo(() => {
         const comentariosDirectos = Array.isArray(detalleCaso.comentarios_profes)
@@ -34,24 +34,9 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
 
     useEffect(() => {
         setDetalleCaso(caso);
-        loadDetalleCaso(caso.caso_id);
-    }, [caso.caso_id]);
-
-    const loadDetalleCaso = async (casoId: number) => {
-        setLoadingDetalle(true);
         setError('');
-        try {
-            const response = await services.casos.getCasoDetalle(casoId);
-            if (response.status === 200) {
-                setDetalleCaso(response.data);
-                onCasoUpdated?.(response.data);
-            }
-        } catch (err: any) {
-            setError(err.message || 'No se pudo cargar el detalle actualizado del caso.');
-        } finally {
-            setLoadingDetalle(false);
-        }
-    };
+        setSuccess('');
+    }, [caso]);
 
     const handleAgregarComentario = async () => {
         const comentarioLimpio = comentario.trim();
@@ -65,11 +50,42 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
         setSuccess('');
         try {
             const response = await services.casos.agregarComentarioCaso(detalleCaso.caso_id, comentarioLimpio);
-            if (response.status === 200) {
-                setDetalleCaso((prev) => ({
-                    ...prev,
-                    comentarios_profes: response.data.comentarios_profes || prev.comentarios_profes || [],
-                }));
+            if (response.status === 200 || response.status === 201) {
+                const nuevoComentario: ComentarioProfesor = {
+                    user_id: currentUser?.id ?? currentUser?.user_id ?? 0,
+                    username: currentUser?.username ?? 'usuario',
+                    comentario: comentarioLimpio,
+                    timestamp: new Date().toISOString(),
+                };
+
+                setDetalleCaso((prev) => {
+                    const comentariosActuales = Array.isArray(prev.comentarios_profes)
+                        ? prev.comentarios_profes
+                        : [];
+
+                    const comentariosBackend = Array.isArray(response.data.comentarios_profes)
+                        ? response.data.comentarios_profes
+                        : [];
+
+                    return {
+                        ...prev,
+                        comentarios_profes: comentariosBackend.length > 0
+                            ? comentariosBackend
+                            : [...comentariosActuales, nuevoComentario],
+                    };
+                });
+
+                const comentariosActualizados = Array.isArray(response.data.comentarios_profes)
+                    ? response.data.comentarios_profes
+                    : [...(detalleCaso.comentarios_profes || []), nuevoComentario];
+
+                const updatedCaso = {
+                    ...detalleCaso,
+                    comentarios_profes: comentariosActualizados,
+                };
+
+                onCasoUpdated?.(updatedCaso);
+
                 setComentario('');
                 setSuccess('Comentario agregado correctamente.');
             }
@@ -79,6 +95,9 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
             setEnviandoComentario(false);
         }
     };
+    
+    
+
 
     const handleIndultarCaso = async () => {
         setProcesandoEstado(true);
@@ -139,25 +158,29 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
         <>
         <Modal show={true} onHide={onClose} size="lg">
             <Modal.Header closeButton>
-                <Modal.Title>Detalles del Caso #{detalleCaso.caso_id}</Modal.Title>
+                <Modal.Title>Detalles del caso</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                {loadingDetalle && (
-                    <div className="d-flex align-items-center gap-2 mb-3">
-                        <Spinner animation="border" size="sm" />
-                        <span>Actualizando detalle del caso...</span>
-                    </div>
-                )}
-
                 {error && <Alert variant="danger">{error}</Alert>}
                 {success && <Alert variant="success">{success}</Alert>}
 
-                <p><strong>ID Reporte:</strong> {detalleCaso.reporte_id ?? '-'}</p>
                 <p><strong>Similitud:</strong> {detalleCaso.similitud}%</p>
                 <p><strong>Lineas:</strong> {detalleCaso.lineas ?? '-'}</p>
                 <p><strong>Estado:</strong> {detalleCaso.closed ? 'Resuelto' : 'Pendiente'}</p>
                 <p><strong>Sancion:</strong> {detalleCaso.sancion ? 'Sancionado' : 'Sin sancion'}</p>
                 <p><strong>URL MOSS:</strong> {detalleCaso.url_moss ? <a href={detalleCaso.url_moss} target="_blank" rel="noopener noreferrer">Ver en MOSS</a> : '-'}</p>
+                <p><strong>Paralelos asignados:</strong></p>
+                <ul>
+                    {detalleCaso.paralelos?.length ? (
+                        detalleCaso.paralelos.map((paralelo) => (
+                            <li key={paralelo.paralelo_id}>
+                                {paralelo.sigla_paralelo}{paralelo.sede_nombre ? ` · ${paralelo.sede_nombre}` : ''}
+                            </li>
+                        ))
+                    ) : (
+                        <li>No hay paralelos asociados</li>
+                    )}
+                </ul>
                 <p><strong>Estudiantes Involucrados:</strong></p>
                 <ul>
                     {detalleCaso.estudiantes?.map(estudiante => (
@@ -198,8 +221,6 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
                         placeholder="Escribe una observacion para este caso"
                     />
                 </Form.Group>
-            </Modal.Body>
-            <Modal.Footer>
                 <Button
                     variant="outline-primary"
                     onClick={handleAgregarComentario}
@@ -207,6 +228,8 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
                 >
                     {enviandoComentario ? 'Guardando comentario...' : 'Guardar comentario'}
                 </Button>
+            </Modal.Body>
+            <Modal.Footer>
                 <Button
                     variant="success"
                     onClick={handleIndultarCaso}

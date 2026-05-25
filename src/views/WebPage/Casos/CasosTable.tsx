@@ -52,10 +52,11 @@ const CasosTable: React.FC<CasosTableProps> = ({
       <Table responsive hover className="mb-0 align-middle">
         <thead>
           <tr>
-            <th>ID Caso</th>
             <th>Similitud</th>
             <th>Lineas</th>
+            <th>Paralelos</th>
             <th>Estado</th>
+            <th>Asignado</th>
             <th>Estudiante 1</th>
             <th>Estudiante 2</th>
             <th>MOSS</th>
@@ -66,12 +67,34 @@ const CasosTable: React.FC<CasosTableProps> = ({
         <tbody>
           {casosList.map((caso) => {
             const estudiantes = caso.estudiantes || [];
+            const asignados = caso.usuarios_asignados || [];
+            const sinEncargado = asignados.length === 0;
+            const paralelos = caso.paralelos || [];
+            const paralelosVista = paralelos.length > 0
+              ? paralelos
+              : estudiantes
+                  .map((estudiante) => estudiante.paralelo)
+                  .filter(Boolean)
+                  .map((sigla) => ({ paralelo_id: 0, sigla_paralelo: sigla as string, sede_id: null, sede_nombre: null }));
 
             return (
-              <tr key={caso.caso_id}>
-                <td>{caso.caso_id}</td>
+              <tr key={caso.caso_id} className={sinEncargado ? 'table-warning' : ''}>
                 <td>{caso.similitud}%</td>
                 <td>{caso.lineas ?? '-'}</td>
+                <td>
+                  {paralelosVista.length > 0 ? (
+                    <div className="d-flex flex-wrap gap-1">
+                      {paralelosVista.map((paralelo) => (
+                        <Badge key={`${caso.caso_id}-${paralelo.paralelo_id}-${paralelo.sigla_paralelo}`} bg="light" text="dark" pill className="border">
+                          {paralelo.sigla_paralelo}
+                          {paralelo.sede_nombre ? ` · ${paralelo.sede_nombre}` : ''}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-secondary">Sin paralelo</span>
+                  )}
+                </td>
                 <td>
                   {caso.closed ? (
                     caso.sancion ? (
@@ -82,6 +105,19 @@ const CasosTable: React.FC<CasosTableProps> = ({
                     )
                   ) : (
                     <Badge bg="warning" text="dark">Pendiente</Badge>
+                  )}
+                </td>
+                <td>
+                  {sinEncargado ? (
+                    <Badge bg="warning" text="dark">Sin encargado</Badge>
+                  ) : (
+                    <div className="d-flex flex-wrap gap-1">
+                      {asignados.map((u) => (
+                        <Badge key={u.user_id} bg="light" text="dark" pill className="border">
+                          {u.username}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
                 </td>
                 <td>

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Alert, Button, Card, Col, Container, Form, Row, Spinner } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import authService from '../../../crud/auth'
+import { ROUTES } from '../../../routes';
 import type { LoginCredentials } from '../../../crud/auth'
 
 const Login: React.FC = () => {
@@ -22,7 +23,12 @@ const Login: React.FC = () => {
             
             if (response.data.access_token) {
                 console.log('Login exitoso:', response.data.user);
-                navigate('/dashboard');
+                const user = response.data.user;
+                if (user && user.rol_id === 2) {
+                    navigate(ROUTES.PARALELOS);
+                } else {
+                    navigate(ROUTES.DASHBOARD);
+                }
             } else {
                 setError('Login failed: No access token received');
             }

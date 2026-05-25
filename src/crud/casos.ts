@@ -31,6 +31,12 @@ interface Caso {
   closed: boolean;
   sancion?: boolean | null;
   caso_metadata?: any;
+  paralelos?: Array<{
+    paralelo_id: number;
+    sigla_paralelo: string;
+    sede_id?: number | null;
+    sede_nombre?: string | null;
+  }>;
   estudiantes?: EstudianteCaso[];
   usuarios_asignados?: UsuarioAsignado[];
   comentarios_profes?: ComentarioProfesor[];
@@ -108,6 +114,28 @@ class CasosService {
         data: null,
         status: error.response?.status || 500,
         message: error.response?.data?.msg || error.response?.data?.error || 'Error al obtener detalle del caso'
+      };
+    }
+  }
+
+  
+
+  async cambiarDecision(casoId: number): Promise<ApiResponse<any>> {
+    try {
+      const response = await axios.post(`${this.baseURL}/casos/CambiarDecision/${casoId}`, null, {
+        headers: this.getAuthHeaders()
+      });
+
+      return {
+        data: response.data,
+        status: response.status,
+        message: 'Decisión del caso cambiada exitosamente'
+      };
+    } catch (error: any) {
+      throw {
+        data: null,
+        status: error.response?.status || 500,
+        message: error.response?.data?.msg || error.response?.data?.error || 'Error al cambiar decisión del caso'
       };
     }
   }
@@ -310,6 +338,32 @@ class CasosService {
         data: null,
         status: error.response?.status || 500,
         message: error.response?.data?.msg || error.response?.data?.error || 'Error al obtener estadísticas de casos por paralelos y evaluación'
+      };
+    }
+  }
+
+  async getStatsCasosForSedesByEvaluacionId(evaluacionId: number): Promise<ApiResponse<Array<{
+    sede_id: number;
+    nombre: string;
+    total_casos: number;
+    total_casos_pendientes: number;
+    total_casos_resueltos: number;
+  }>>> {
+    try {
+      const response = await axios.get(`${this.baseURL}/casos/ObtenerStatsCasosPorSedesAndEvaluacionId/${evaluacionId}`, {
+        headers: this.getAuthHeaders()
+      });
+
+      return {
+        data: response.data,
+        status: response.status,
+        message: 'Estadísticas de casos por sedes obtenidas exitosamente'
+      };
+    } catch (error: any) {
+      throw {
+        data: null,
+        status: error.response?.status || 500,
+        message: error.response?.data?.msg || error.response?.data?.error || 'Error al obtener estadísticas de casos por sedes'
       };
     }
   }

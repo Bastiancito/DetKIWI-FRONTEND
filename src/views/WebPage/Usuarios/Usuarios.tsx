@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
 import { Alert, Badge, Button, Card, Col, Form, Row, Spinner, Table } from 'react-bootstrap';
+import { toast } from 'react-toastify';
 import type { Paralelo, Sede, Usuario } from '../interfaces';
 import { authService, paralelosService, sedesService, usersService } from "../../../crud";
+import type { UploadParticipantesResponse } from "../../../crud";
 import CreateUsuarioModal from './components/CreateUsuarioModal/CreateUsuarioModal';
 import UpdateUsuarioModal from './components/UpdateUsuarioModal/UpdateUsuarioModal';
+import RequireRole from '../../../components/RequireRole';
+
+const ALLOWED_IMPORT_EXTENSIONS = ['xlsx', 'xls', 'csv'];
+
+const isAllowedImportFile = (file: File) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    return !!extension && ALLOWED_IMPORT_EXTENSIONS.includes(extension);
+};
 
 const Usuarios: React.FC = () => {
     const currentUser = authService.getCurrentUser();
@@ -19,26 +29,23 @@ const Usuarios: React.FC = () => {
         const [showCreateModal, setShowCreateModal] = useState(false);
         const [showUpdateModal, setShowUpdateModal] = useState(false);
         const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+        const [participantsFile, setParticipantsFile] = useState<File | null>(null);
+        const [participantsInputKey, setParticipantsInputKey] = useState(0);
+        const [participantsUploading, setParticipantsUploading] = useState(false);
+        const [participantsError, setParticipantsError] = useState('');
+        const [participantsResult, setParticipantsResult] = useState<UploadParticipantesResponse | null>(null);
 
         const fetchUsuarios = async () => {
-            const usersResponse = await usersService.getAllUsers();
-            const basicUsers = usersResponse.data as unknown as Usuario[];
+            try {
+                const usersResponse = await usersService.getAllUsers();
+                const basicUsers = usersResponse.data as unknown as Usuario[];
 
-            const usersWithDetails = await Promise.all(
-                basicUsers.map(async (usuario) => {
-                    try {
-                        const detailResponse = await usersService.getUserById(usuario.user_id);
-                        return detailResponse.data as unknown as Usuario;
-                    } catch {
-                        return {
-                            ...usuario,
-                            paralelos: usuario.paralelos || []
-                        } as Usuario;
-                    }
-                })
-            );
-
-            setUsuarios(usersWithDetails);
+                // Usar la data que ya entrega `getAllUsers` en lugar de
+                // hacer una llamada por cada usuario a `getUserById`.
+                setUsuarios(basicUsers.map((u) => ({ ...u, paralelos: u.paralelos || [] })));
+            } catch {
+                setError('Error al obtener los usuarios');
+            }
         };
 
         const fetchInitialData = async () => {
@@ -96,6 +103,52 @@ const Usuarios: React.FC = () => {
             await fetchUsuarios();
         };
 
+        const handleParticipantsFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+            const selectedFile = event.target.files ? event.target.files[0] : null;
+            setParticipantsFile(selectedFile);
+            setParticipantsError('');
+            setParticipantsResult(null);
+
+            if (selectedFile && !isAllowedImportFile(selectedFile)) {
+                event.target.value = '';
+                setParticipantsFile(null);
+                setParticipantsError('Formato inválido. Usa .xlsx, .xls o .csv.');
+                toast.error('Formato inválido. Usa .xlsx, .xls o .csv.');
+            }
+        };
+
+        const handleParticipantsUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+            event.preventDefault();
+
+            if (!participantsFile) {
+                setParticipantsError('Selecciona un archivo antes de importar');
+                toast.error('Selecciona un archivo antes de importar');
+                return;
+            }
+
+            setParticipantsUploading(true);
+            setParticipantsError('');
+            setParticipantsResult(null);
+
+            try {
+                const response = await usersService.uploadParticipantes(participantsFile);
+                const result = response.data;
+
+                setParticipantsResult(result);
+                toast.success(`Importación completada: ${result.usuarios_creados} usuarios creados y ${result.usuarios_actualizados} actualizados`);
+
+                await fetchInitialData();
+                setParticipantsFile(null);
+                setParticipantsInputKey((current) => current + 1);
+            } catch (err: any) {
+                const errorMessage = err.message || err.data?.msg || 'Error al importar participantes';
+                setParticipantsError(errorMessage);
+                toast.error(errorMessage);
+            } finally {
+                setParticipantsUploading(false);
+            }
+        };
+
         const renderTable = () => {
         if (loading) {
             return (<Spinner animation="border" />);
@@ -115,7 +168,6 @@ const Usuarios: React.FC = () => {
                             <tr>
                                 <th>Usuario</th>
                                 <th>Email</th>
-                                <th>Rol</th>
                                 <th>Paralelos</th>
                                 <th className="text-end">Acciones</th>
                             </tr>
@@ -135,10 +187,12 @@ const Usuarios: React.FC = () => {
                                         </div>
                                     </td>
                                     <td>{usuario.email}</td>
-                                    <td>{usuario.rol_id ?? '-'}</td>
                                     <td>
                                         {(usuario.paralelos || []).length > 0
-                                            ? usuario.paralelos?.map((paralelo) => paralelo.nombre).join(', ')
+                                            ? usuario.paralelos?.map((paralelo) => (<Badge key={usuario.user_id + '-' + paralelo.paralelo_id} bg="light" text="dark" pill className="border">
+                                                {paralelo.nombre}
+                                                {paralelo.sede_nombre ? ` · ${paralelo.sede_nombre}` : ''}
+                                            </Badge>))
                                             : '-'}
                                     </td>
                                     <td className="text-end">
@@ -161,6 +215,7 @@ const Usuarios: React.FC = () => {
     };
 
     return (
+        <RequireRole allowedRoles={[1]}>
         <div className="w-100">
             <Row className="g-4">
                 <Col xs={12}>
@@ -175,6 +230,55 @@ const Usuarios: React.FC = () => {
                         </Card.Body>
                     </Card>
                 </Col>
+
+                <Col xs={12}>
+                    <Card className="surface-card border-0">
+                        <Card.Body className="p-4 p-lg-5">
+                            <Row className="g-4 align-items-center">
+                                <Col lg={7}>
+                                    <h2 className="h4 fw-bold mb-2">Importar participantes</h2>
+                                </Col>
+                                <Col lg={5}>
+                                    <Form onSubmit={handleParticipantsUpload} className="d-grid gap-3">
+                                        <Form.Group controlId="participantsFile">
+                                            <Form.Label className="fw-semibold">Archivo</Form.Label>
+                                            <Form.Control
+                                                key={participantsInputKey}
+                                                type="file"
+                                                accept=".xlsx,.xls,.csv"
+                                                onChange={handleParticipantsFileChange}
+                                                disabled={participantsUploading}
+                                            />
+                                            <Form.Text className="text-secondary">
+                                                Formatos soportados: .xlsx, .xls y .csv.
+                                            </Form.Text>
+                                        </Form.Group>
+
+                                        {participantsError && <Alert variant="danger" className="mb-0">{participantsError}</Alert>}
+
+                                        {participantsResult && (
+                                            <Alert variant="success" className="mb-0">
+                                                <Alert.Heading className="h6 fw-bold">Importación exitosa</Alert.Heading>
+                                                <div className="d-grid gap-1">
+                                                    <span><strong>Procesados:</strong> {participantsResult.total_procesados}</span>
+                                                    <span><strong>Usuarios creados:</strong> {participantsResult.usuarios_creados}</span>
+                                                    <span><strong>Usuarios actualizados:</strong> {participantsResult.usuarios_actualizados}</span>
+                                                </div>
+                                            </Alert>
+                                        )}
+
+                                        <div className="d-flex justify-content-end">
+                                            <Button type="submit" variant="primary" disabled={participantsUploading || !participantsFile}>
+                                                {participantsUploading ? 'Importando...' : 'Importar participantes'}
+                                            </Button>
+                                        </div>
+                                    </Form>
+                                </Col>
+                            </Row>
+                        </Card.Body>
+                    </Card>
+                </Col>
+
                 <Col xs={12}>
                     <Card className="surface-card border-0">
                                                 <Card.Body className="p-4 border-bottom">
@@ -256,6 +360,7 @@ const Usuarios: React.FC = () => {
                             onUserUpdated={handleUserUpdated}
                         />
         </div>
+        </RequireRole>
     );
 }
 

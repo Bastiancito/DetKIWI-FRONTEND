@@ -1,34 +1,99 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
+import { Alert, Badge, Button, Card, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { services } from '../../../crud';
 import type { CasoSancionado, EstudianteSancionado, ProfesorInvolucrado } from '../../../crud/casosSancionados';
+import RequireRole from '../../../components/RequireRole';
 
 const CasosSancionados: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [filtroCasoId, setFiltroCasoId] = useState<string>('');
+  const [filtroNombre, setFiltroNombre] = useState<string>('');
+  const [selectedParalelosFilter, setSelectedParalelosFilter] = useState<string[]>([]);
   const [sanciones, setSanciones] = useState<CasoSancionado[]>([]);
+
+  const currentUser = services.auth.getCurrentUser();
+  const isProfesor = currentUser?.rol_id === 2;
+  const profesorParalelosSiglas: string[] = (currentUser?.paralelos || []).map((p: any) => p.sigla_paralelo).filter(Boolean);
 
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [selectedSancion, setSelectedSancion] = useState<CasoSancionado | null>(null);
 
-  const totalSanciones = sanciones.length;
+  const availableParalelos = useMemo(() => {
+    const paralelosMap = new Map<string, string>();
+
+    sanciones.forEach((sancion) => {
+      const estudiantes = Object.values(sancion.estudiantes_involucrados || {} as any) as any[];
+
+      estudiantes.forEach((estudiante) => {
+        if (!estudiante?.paralelo) {
+          return;
+        }
+
+        const sigla = String(estudiante.paralelo);
+        paralelosMap.set(sigla, sigla);
+      });
+    });
+
+    return Array.from(paralelosMap.entries()).map(([paralelo_id, sigla_paralelo]) => ({ paralelo_id, sigla_paralelo }));
+  }, [sanciones]);
+
+  const sancionesFiltradas = useMemo(() => {
+    const query = filtroNombre.trim().toLowerCase();
+
+    return sanciones.filter((sancion) => {
+      const estudiantes = Object.values(sancion.estudiantes_involucrados || {} as any) as any[];
+      const profesores = Object.values(sancion.profesores_involucrados || {} as any) as any[];
+
+      const coincideNombre = !query || [...estudiantes, ...profesores].some((persona) => {
+        const nombreCompleto = [persona?.nombre, persona?.apellido]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        return nombreCompleto.includes(query);
+      });
+
+      const coincideParalelo = selectedParalelosFilter.length === 0
+        || estudiantes.some((estudiante) => {
+          const siglaParalelo = String(estudiante?.paralelo || '').trim();
+          return siglaParalelo && selectedParalelosFilter.includes(siglaParalelo);
+        });
+
+      return coincideNombre && coincideParalelo;
+    });
+  }, [sanciones, filtroNombre, selectedParalelosFilter]);
+
+  const totalSanciones = sancionesFiltradas.length;
+
+  const toggleParaleloFilter = (paraleloSigla: string) => {
+    setSelectedParalelosFilter((prev) => (
+      prev.includes(paraleloSigla)
+        ? prev.filter((sigla) => sigla !== paraleloSigla)
+        : [...prev, paraleloSigla]
+    ));
+  };
 
   const fetchSanciones = async () => {
     setLoading(true);
     setError('');
     try {
-      const casoId = filtroCasoId.trim() ? Number(filtroCasoId.trim()) : undefined;
-      if (filtroCasoId.trim() && Number.isNaN(casoId)) {
-        setError('El filtro de caso debe ser numerico.');
-        setSanciones([]);
-        return;
-      }
-
-      const response = await services.casosSancionados.getCasosSancionados(casoId);
+      const response = await services.casosSancionados.getCasosSancionados();
       if (response.status === 200) {
-        setSanciones(response.data.sanciones || []);
+        let results = response.data.sanciones || [];
+
+        // If user is a professor, limit shown sanciones to those involving students in their paralelos
+        if (isProfesor && profesorParalelosSiglas.length > 0) {
+          results = results.filter((sancion: CasoSancionado) => {
+            const estudiantes = Object.values(sancion.estudiantes_involucrados || {} as any) as any[];
+            return estudiantes.some((est) => {
+              if (!est || !est.paralelo) return false;
+              return profesorParalelosSiglas.includes(String(est.paralelo));
+            });
+          });
+        }
+
+        setSanciones(results);
       }
     } catch (err: any) {
       setError(err.message || 'No fue posible cargar los casos sancionados.');
@@ -89,6 +154,7 @@ const CasosSancionados: React.FC = () => {
   };
 
   return (
+    <RequireRole allowedRoles={[1,2]}>
     <div className="w-100">
       <Row className="g-4">
         <Col xs={12}>
@@ -96,11 +162,11 @@ const CasosSancionados: React.FC = () => {
             <Card.Body className="p-4 p-lg-5 d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
               <div>
                 <h1 className="page-title h2 fw-bold mb-2">Casos sancionados</h1>
-                <p className="text-secondary mb-0">Consulta y revisa el historial de sanciones registradas.</p>
               </div>
+              {/* 
               <Badge bg="danger" pill className="fs-6 px-3 py-2 align-self-start align-self-lg-center">
-                {totalSanciones} sanciones
-              </Badge>
+                {totalSanciones} visibles de {sanciones.length}
+              </Badge>*/}
             </Card.Body>
           </Card>
         </Col>
@@ -110,22 +176,61 @@ const CasosSancionados: React.FC = () => {
             <Card.Body className="p-4 border-bottom">
               <Row className="g-3 align-items-end">
                 <Col xs={12} md={6} lg={4}>
-                  <Form.Group controlId="filtro-caso-id-sanciones">
-                    <Form.Label>Filtrar por ID de caso</Form.Label>
+                  <Form.Group controlId="filtro-nombre-sanciones">
+                    <Form.Label>Filtrar por nombre</Form.Label>
                     <Form.Control
                       type="text"
-                      placeholder="Ej: 12"
-                      value={filtroCasoId}
-                      onChange={(e) => setFiltroCasoId(e.target.value)}
+                      placeholder="Ej: Antonia, Cristobal, Pedro"
+                      value={filtroNombre}
+                      onChange={(e) => setFiltroNombre(e.target.value)}
                     />
                   </Form.Group>
                 </Col>
-                <Col xs={12} md={6} lg={8} className="d-flex gap-2 justify-content-md-end">
-                  <Button variant="outline-secondary" onClick={() => { setFiltroCasoId(''); setTimeout(fetchSanciones, 0); }}>
-                    Limpiar filtro
+                <Col xs={12} md={6} lg="auto">
+                  <Form.Group controlId="filtro-paralelo-sanciones">
+                    <Form.Label>Filtrar por paralelo</Form.Label>
+                    <Dropdown autoClose="outside" align="start">
+                      <Dropdown.Toggle variant="outline-secondary" className="w-100 text-start text-truncate">
+                        {selectedParalelosFilter.length > 0
+                          ? `Paralelos (${selectedParalelosFilter.length})`
+                          : 'Filtrar paralelos'}
+                      </Dropdown.Toggle>
+                      <Dropdown.Menu className="p-3" style={{ minWidth: '16rem', maxHeight: '300px', overflowY: 'auto' }}>
+                        {availableParalelos.length === 0 ? (
+                          <span className="text-secondary">Sin opciones disponibles</span>
+                        ) : (
+                          availableParalelos.map((paralelo) => (
+                            <Form.Check
+                              key={paralelo.paralelo_id}
+                              type="checkbox"
+                              id={`paralelo-filter-${paralelo.paralelo_id}`}
+                              className="mb-2"
+                              label={paralelo.sigla_paralelo}
+                              checked={selectedParalelosFilter.includes(paralelo.sigla_paralelo)}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={() => toggleParaleloFilter(paralelo.sigla_paralelo)}
+                            />
+                          ))
+                        )}
+                      </Dropdown.Menu>
+                    </Dropdown>
+                  </Form.Group>
+                </Col>
+                <Col xs={12} md={6} lg="auto" className="d-flex align-items-end">
+                  <Button
+                    variant="outline-secondary"
+                    onClick={() => {
+                      setFiltroNombre('');
+                      setSelectedParalelosFilter([]);
+                    }}
+                    disabled={!filtroNombre.trim() && selectedParalelosFilter.length === 0}
+                  >
+                    Limpiar filtros
                   </Button>
+                </Col>
+                <Col xs={12} lg="auto" className="ms-lg-auto d-flex justify-content-lg-end">
                   <Button variant="primary" onClick={fetchSanciones}>
-                    Buscar
+                    Actualizar
                   </Button>
                 </Col>
               </Row>
@@ -139,30 +244,27 @@ const CasosSancionados: React.FC = () => {
                 </div>
               ) : error ? (
                 <Alert variant="danger" className="m-3 mb-0">{error}</Alert>
-              ) : sanciones.length === 0 ? (
-                <div className="p-4 text-secondary">No hay casos sancionados para mostrar.</div>
+              ) : sancionesFiltradas.length === 0 ? (
+                <div className="p-4 text-secondary">No hay casos sancionados que coincidan con el nombre buscado.</div>
               ) : (
                 <Table responsive hover className="mb-0 align-middle">
                   <thead>
                     <tr>
-                      <th>ID sancion</th>
-                      <th>ID caso</th>
+                      <th>Estudiante 1</th>
+                      <th>Estudiante 2</th>
                       <th>Fecha sancion</th>
-                      <th>Estudiantes</th>
                       <th>Descripcion</th>
                       <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sanciones.map((sancion) => {
-                      const totalEstudiantes = Object.keys(sancion.estudiantes_involucrados || {}).length;
-
+                    {sancionesFiltradas.map((sancion) => {
+                      const estList = Object.values(sancion.estudiantes_involucrados || {}) as EstudianteSancionado[];
                       return (
                         <tr key={sancion.sancion_id}>
-                          <td>{sancion.sancion_id}</td>
-                          <td>{sancion.caso_id}</td>
+                          <td>{estList[0]?.nombre || '-'}</td>
+                          <td>{estList[1]?.nombre || '-'}</td>
                           <td>{formatFecha(sancion.fecha_sancion)}</td>
-                          <td>{totalEstudiantes}</td>
                           <td>{sancion.descripcion_sancion}</td>
                           <td>
                             <Button
@@ -207,8 +309,6 @@ const CasosSancionados: React.FC = () => {
                     <tr>
                       <th>ID</th>
                       <th>Nombre</th>
-                      <th>Apellido</th>
-                      <th>Rol USM</th>
                       <th>Paralelo</th>
                     </tr>
                   </thead>
@@ -217,9 +317,7 @@ const CasosSancionados: React.FC = () => {
                       <tr key={estudiante.estudianteId}>
                         <td>{estudiante.estudianteId}</td>
                         <td>{estudiante.nombre || '-'}</td>
-                        <td>{estudiante.apellido || '-'}</td>
-                        <td>{estudiante.rol_usm || '-'}</td>
-                        <td>{estudiante.paralelo || '-'}</td>
+                        <td>{estudiante.paralelo ? <Badge bg="light" text="dark" pill className="border">{estudiante.paralelo}</Badge> : '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -231,19 +329,10 @@ const CasosSancionados: React.FC = () => {
                 <p className="text-secondary mb-0">No hay profesores registrados en esta sancion.</p>
               ) : (
                 <Table responsive className="mb-0">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Username</th>
-                      <th>Email</th>
-                    </tr>
-                  </thead>
                   <tbody>
                     {profesoresList.map((profesor) => (
                       <tr key={profesor.profesorId}>
-                        <td>{profesor.profesorId}</td>
-                        <td>{profesor.username || '-'}</td>
-                        <td>{profesor.email || '-'}</td>
+                        <td>{profesor.nombre || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -259,6 +348,7 @@ const CasosSancionados: React.FC = () => {
         </Modal.Footer>
       </Modal>
     </div>
+    </RequireRole>
   );
 };
 
