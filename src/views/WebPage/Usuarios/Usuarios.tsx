@@ -7,6 +7,7 @@ import type { UploadParticipantesResponse } from "../../../crud";
 import CreateUsuarioModal from './components/CreateUsuarioModal/CreateUsuarioModal';
 import UpdateUsuarioModal from './components/UpdateUsuarioModal/UpdateUsuarioModal';
 import RequireRole from '../../../components/RequireRole';
+import { getErrorMessage, isSuccessfulResponse } from '../../../crud/responseHelpers';
 
 const ALLOWED_IMPORT_EXTENSIONS = ['xlsx', 'xls', 'csv'];
 
@@ -132,6 +133,10 @@ const Usuarios: React.FC = () => {
 
             try {
                 const response = await usersService.uploadParticipantes(participantsFile);
+                if (!isSuccessfulResponse(response)) {
+                    throw new Error('Error al importar participantes');
+                }
+
                 const result = response.data;
 
                 setParticipantsResult(result);
@@ -141,7 +146,7 @@ const Usuarios: React.FC = () => {
                 setParticipantsFile(null);
                 setParticipantsInputKey((current) => current + 1);
             } catch (err: any) {
-                const errorMessage = err.message || err.data?.msg || 'Error al importar participantes';
+                const errorMessage = getErrorMessage(err, 'Error al importar participantes');
                 setParticipantsError(errorMessage);
                 toast.error(errorMessage);
             } finally {

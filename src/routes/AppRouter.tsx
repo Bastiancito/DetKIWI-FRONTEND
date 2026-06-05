@@ -6,7 +6,6 @@ import Navbar from '../components/Navbar';
 
 import Login from '../views/WebPage/Login/Login';
 import UploadExcel from '../views/WebPage/UploadExcel/UploadExcel';
-import Sedes from '../views/WebPage/Sedes/Sedes';
 import Dashboard from '../views/WebPage/Dashboard/Dashboard';
 import Usuarios from '../views/WebPage/Usuarios/Usuarios';
 import Estudiantes from '../views/WebPage/Estudiantes/Estudiantes';
@@ -65,6 +64,15 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [checkingSession, setCheckingSession] = useState(true);
   const [sessionValid, setSessionValid] = useState(false);
 
+  const getLandingPath = () => {
+    const currentUser = authService.getCurrentUser();
+    if (currentUser?.rol_id === 2) {
+      return '/paralelos';
+    }
+
+    return '/dashboard';
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -102,7 +110,7 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }
 
   if (sessionValid) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={getLandingPath()} replace />;
   }
   
   return <>{children}</>;

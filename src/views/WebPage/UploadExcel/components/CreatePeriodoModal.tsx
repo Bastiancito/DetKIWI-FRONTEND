@@ -3,6 +3,7 @@ import { Button, Form, Modal } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { periodosService } from '../../../../crud';
 import type { Periodo } from '../../../../crud';
+import { getErrorMessage, isSuccessfulResponse } from '../../../../crud/responseHelpers';
 
 interface CreatePeriodoModalProps {
     evaluacionId: number;
@@ -37,16 +38,18 @@ const CreatePeriodoModal: React.FC<CreatePeriodoModalProps> = ({
                 semestre,
             });
 
-            if (response.status === 200 || response.status === 201) {
-                toast.success(response.message || 'Período creado exitosamente');
-                onPeriodoCreated(response.data.periodo);
-                onClose();
-                return;
+            if (!isSuccessfulResponse(response)) {
+                throw new Error('Error al crear el período');
             }
+
+            toast.success(response.message || 'Período creado exitosamente');
+            onPeriodoCreated(response.data.periodo);
+            onClose();
+            return;
 
             toast.error('Error al crear el período');
         } catch (error: any) {
-            toast.error(error.message || 'Error al crear el período');
+            toast.error(getErrorMessage(error, 'Error al crear el período'));
         } finally {
             setLoading(false);
         }

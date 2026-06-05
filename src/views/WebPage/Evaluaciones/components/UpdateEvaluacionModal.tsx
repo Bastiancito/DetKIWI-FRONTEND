@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Form, Modal } from 'react-bootstrap';
 import { evaluacionesService } from '../../../../crud';
 import { toast } from 'react-toastify';
 import type { Evaluacion } from '../../../../crud/evaluaciones';
+import { getErrorMessage, isSuccessfulResponse } from '../../../../crud/responseHelpers';
 
 interface UpdateEvaluacionModalProps {
   show: boolean;
@@ -47,14 +48,22 @@ const UpdateEvaluacionModal: React.FC<UpdateEvaluacionModalProps> = ({
     try {
       let estadoFinal = activo;
 
-      await evaluacionesService.actualizarEvaluacion(evaluacion.evaluacion_id, {
+      const updateResponse = await evaluacionesService.actualizarEvaluacion(evaluacion.evaluacion_id, {
         nombre,
         descripcion,
         fecha_entrega: fechaEntrega || undefined
       });
 
+      if (!isSuccessfulResponse(updateResponse)) {
+        throw new Error('No fue posible actualizar la evaluación');
+      }
+
       if ((evaluacion.activo ?? false) !== activo) {
         const toggleResponse = await evaluacionesService.toggleEstadoEvaluacion(evaluacion.evaluacion_id);
+        if (!isSuccessfulResponse(toggleResponse)) {
+          throw new Error('No fue posible actualizar el estado de la evaluación');
+        }
+
         estadoFinal = toggleResponse.data?.evaluacion?.activo ?? activo;
         setActivo(estadoFinal);
       }
@@ -63,7 +72,7 @@ const UpdateEvaluacionModal: React.FC<UpdateEvaluacionModalProps> = ({
       toast.success(`Evaluación actualizada correctamente. Estado: ${estadoFinal ? 'Activa' : 'Inactiva'}`);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'No fue posible actualizar la evaluación');
+      setError(getErrorMessage(err, 'No fue posible actualizar la evaluación'));
     } finally {
       setSaving(false);
     }

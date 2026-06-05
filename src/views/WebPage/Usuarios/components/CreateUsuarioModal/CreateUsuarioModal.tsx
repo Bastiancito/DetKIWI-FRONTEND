@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Badge, Button, Form, ListGroup, Modal, Spinner } from "react-bootstrap";
 import type { Paralelo, Rol, Usuario } from "../../../interfaces";
 import { paralelosService, rolesService, usersService } from "../../../../../crud";
+import { getErrorMessage, isSuccessfulResponse } from "../../../../../crud/responseHelpers";
 interface CreateUsuarioModalProps {
     show: boolean;
     onClose: () => void;
@@ -108,10 +109,14 @@ const CreateUsuarioModal: React.FC<CreateUsuarioModalProps> = ({ show, onClose, 
                     paralelo_ids: selectedParaleloIds
                 });
 
+                if (!isSuccessfulResponse(response)) {
+                    throw new Error('Error al crear el usuario');
+                }
+
                 onUserCreated(response.data as unknown as Usuario);
                 handleClose();
-            } catch {
-                setError('Error al crear el usuario');
+            } catch (error: any) {
+                setError(getErrorMessage(error, 'Error al crear el usuario'));
             } finally {
                 setSaving(false);
             }

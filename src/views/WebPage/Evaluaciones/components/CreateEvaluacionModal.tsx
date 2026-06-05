@@ -4,6 +4,7 @@ import { evaluacionesService } from '../../../../crud';
 import { toast } from 'react-toastify';
 import type { CreateEvaluacionData } from '../../../../crud/evaluaciones';
 import type { Periodo } from '../../../../crud/periodos';
+import { getErrorMessage, isSuccessfulResponse } from '../../../../crud/responseHelpers';
 
 interface CreateEvaluacionModalProps {
   show: boolean;
@@ -61,12 +62,16 @@ const CreateEvaluacionModal: React.FC<CreateEvaluacionModalProps> = ({
         periodo_id: selectedPeriodoId
       };
 
-      await evaluacionesService.crearEvaluacion(payload);
+      const response = await evaluacionesService.crearEvaluacion(payload);
+      if (!isSuccessfulResponse(response)) {
+        throw new Error('No fue posible crear la evaluación');
+      }
+
       await onEvaluacionCreated();
       resetEvaluacionForm();
       toast.success('Evaluación creada correctamente');
     } catch (err: any) {
-      setError(err?.message || 'No fue posible crear la evaluación');
+      setError(getErrorMessage(err, 'No fue posible crear la evaluación'));
     } finally {
       setSavingEvaluacion(false);
     }

@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getBaseURL } from './config';
 import type { Caso } from './casos';
 
-interface Evaluacion {
+export interface Evaluacion {
   evaluacion_id: number;
   nombre: string;
   descripcion?: string;
@@ -47,6 +47,22 @@ interface ListarEvaluacionesResponse {
   total: number;
   evaluaciones: Evaluacion[];
 }
+
+const isValidDate = (value?: string | null): value is string => {
+  if (!value) {
+    return false;
+  }
+
+  return !Number.isNaN(new Date(value).getTime());
+};
+
+export const isEvaluacionFueraDePlazo = (fechaEntrega?: string | null): boolean => {
+  if (!isValidDate(fechaEntrega)) {
+    return false;
+  }
+
+  return new Date(fechaEntrega).getTime() < Date.now();
+};
 
 interface ApiResponse<T> {
   data: T;
@@ -291,7 +307,6 @@ class EvaluacionesService {
 }
 
 export type {
-  Evaluacion,
   CreateEvaluacionData,
   UpdateEvaluacionData,
   EvaluacionDetalle,

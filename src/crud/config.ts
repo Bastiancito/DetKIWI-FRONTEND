@@ -3,14 +3,18 @@ interface ApiConfig {
   environment: 'local' | 'production';
 }
 
+// Averiguamos si Vite está corriendo en modo desarrollo o producción
+const isDev = import.meta.env.MODE === 'development';
+
 const config: ApiConfig = {
-  environment: 'local',
+  // Se cambia automáticamente según cómo levantaste el proyecto
+  environment: isDev ? 'local' : 'production', 
   baseURL: 'http://localhost:5000'
 };
 
 const environments = {
   local: 'http://localhost:5000/api',
-  production: 'https://your-production-api.com/api'
+  production: 'https://det-kiwi-huh9epguabbedva2.brazilsouth-01.azurewebsites.net/api'
 };
 
 export const getBaseURL = (): string => {

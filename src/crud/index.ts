@@ -40,6 +40,7 @@ export type {
   EvaluacionDetalle,
   ListarEvaluacionesResponse
 } from './evaluaciones';
+export { isEvaluacionFueraDePlazo } from './evaluaciones';
 export type { 
   Periodo, 
   CreatePeriodoData, 

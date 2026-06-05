@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
+import { Accordion, Alert, Badge, Button, Card, Col, Dropdown, Form, Modal, Row, Spinner, Table } from 'react-bootstrap';
 import { services } from '../../../crud';
 import type { CasoSancionado, EstudianteSancionado, ProfesorInvolucrado } from '../../../crud/casosSancionados';
 import RequireRole from '../../../components/RequireRole';
@@ -18,6 +18,8 @@ const CasosSancionados: React.FC = () => {
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
   const [selectedSancion, setSelectedSancion] = useState<CasoSancionado | null>(null);
+  const [cancellingSancion, setCancellingSancion] = useState(false);
+  const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
 
   const availableParalelos = useMemo(() => {
     const paralelosMap = new Map<string, string>();
@@ -123,6 +125,54 @@ const CasosSancionados: React.FC = () => {
     }
   };
 
+  const handleCancelarSancion = async (sancionId: number) => {
+    if (!window.confirm('¿Confirmas cancelar esta sanción? Esto será trazable y no eliminará el registro.')) return;
+    setCancellingSancion(true);
+    setError('');
+    try {
+      const response = await services.casosSancionados.deleteCasoSancionado(sancionId);
+      if (response.status === 200) {
+        // refresh list and detail
+        await fetchSanciones();
+        if (response.data && response.data.sancion) {
+          setSelectedSancion(response.data.sancion as any);
+        } else {
+          setSelectedSancion(null);
+        }
+        // Close the detail modal on successful cancellation
+        setShowDetalleModal(false);
+        // Notify other parts of the app that a sancion changed so they can refresh/close their modals
+        const casoId = selectedSancion?.caso_id;
+        try {
+          const evt = new CustomEvent('sancion:changed', { detail: { sancionId: sancionId, caso_id: casoId, sancion: response.data?.sancion || null } });
+          window.dispatchEvent(evt);
+        } catch (e) {
+          // ignore
+        }
+        try {
+          // Also emit `caso:updated` so open DetallesCaso modals update in real-time
+          const casoDetail = response.data?.caso ?? (selectedSancion ? { caso_id: selectedSancion.caso_id, sancion: response.data?.sancion ? true : undefined } : null);
+          if (casoDetail) {
+            const casoEvt = new CustomEvent('caso:updated', { detail: casoDetail });
+            window.dispatchEvent(casoEvt);
+          }
+        } catch (e) {
+          // ignore
+        }
+        try {
+          const closeEvt = new CustomEvent('detallecaso:close', { detail: { sancionId, caso_id: casoId } });
+          window.dispatchEvent(closeEvt);
+        } catch (e) {
+          // ignore
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'No fue posible cancelar la sanción.');
+    } finally {
+      setCancellingSancion(false);
+    }
+  };
+
   const estudiantesList = useMemo(() => {
     if (!selectedSancion || !selectedSancion.estudiantes_involucrados) {
       return [];
@@ -145,12 +195,112 @@ const CasosSancionados: React.FC = () => {
     }));
   }, [selectedSancion]);
 
+  const mensajesCaso = useMemo(() => {
+    if (!selectedSancion || !Array.isArray(selectedSancion.comments)) {
+      return [];
+    }
+
+    return selectedSancion.comments;
+  }, [selectedSancion]);
+
   const formatFecha = (fecha?: string | null) => {
     if (!fecha) {
       return '-';
     }
     const date = new Date(fecha);
     return Number.isNaN(date.getTime()) ? fecha : date.toLocaleString();
+  };
+
+  const formatReasonDisplay = (
+    r: any,
+    opts?: { showDescriptions?: boolean; professorId?: string | number; sancionId?: number; onlyMotivos?: boolean },
+  ): React.ReactNode => {
+    if (!r) return '-';
+
+    let parsed: any = r;
+    if (typeof r === 'string') {
+      try {
+        parsed = JSON.parse(r);
+      } catch (e) {
+        parsed = r;
+      }
+    }
+
+    if (typeof parsed === 'string') {
+      if (opts?.onlyMotivos) return <Badge bg="danger" pill className="me-1">{parsed}</Badge>;
+      return parsed;
+    }
+
+    if (typeof parsed === 'object' && parsed !== null) {
+      // If a specific professor is requested, show that professor's motivo + descripcion (foldable)
+      if (opts?.professorId !== undefined) {
+        const key = String(opts.professorId);
+        const item = parsed[key] ?? parsed[Number(key)];
+        if (!item) return '-';
+
+        const motivo = item?.motivo ?? item?.motivo;
+        const descripcion = item?.descripcion ?? item?.descripcion;
+        const stateKey = `${opts.sancionId ?? ''}-${key}`;
+        const expanded = !!expandedReasons[stateKey];
+        const toggle = () => setExpandedReasons((prev) => ({ ...prev, [stateKey]: !prev[stateKey] }));
+
+        const needsToggle = descripcion && String(descripcion).length > 200;
+
+        return (
+          <div>
+            {motivo ? (
+              <Badge bg="danger" pill className="me-2">
+                {motivo}
+              </Badge>
+            ) : null}
+            {descripcion ? (
+              <div className="mt-1">
+                <div
+                  onClick={needsToggle ? toggle : undefined}
+                  style={{
+                    maxHeight: needsToggle && !expanded ? 80 : undefined,
+                    overflow: needsToggle && !expanded ? 'hidden' : undefined,
+                    whiteSpace: 'pre-wrap',
+                    cursor: needsToggle ? 'pointer' : undefined,
+                    position: 'relative',
+                  }}
+                >
+                  {descripcion}
+                  {needsToggle && !expanded && (
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 28,
+                      background: 'linear-gradient(rgba(255,255,255,0), rgba(255,255,255,1))'
+                    }} />
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {!motivo && !descripcion ? <span>{JSON.stringify(item)}</span> : null}
+          </div>
+        );
+      }
+
+      // Otherwise aggregate motivos for badges (table use-case)
+      const items = Object.values(parsed) as any[];
+      const motivos = Array.from(new Set(items.map((it) => (it && it.motivo) || (typeof it === 'string' ? it : null)).filter(Boolean)));
+      if (motivos.length === 0) return '-';
+
+      return (
+        <div>
+          {motivos.map((m, idx) => (
+            <Badge key={idx} bg="danger" pill className="me-1">
+              {m}
+            </Badge>
+          ))}
+        </div>
+      );
+    }
+
+    return String(parsed);
   };
 
   return (
@@ -163,10 +313,9 @@ const CasosSancionados: React.FC = () => {
               <div>
                 <h1 className="page-title h2 fw-bold mb-2">Casos sancionados</h1>
               </div>
-              {/* 
               <Badge bg="danger" pill className="fs-6 px-3 py-2 align-self-start align-self-lg-center">
                 {totalSanciones} visibles de {sanciones.length}
-              </Badge>*/}
+              </Badge>
             </Card.Body>
           </Card>
         </Col>
@@ -253,7 +402,8 @@ const CasosSancionados: React.FC = () => {
                       <th>Estudiante 1</th>
                       <th>Estudiante 2</th>
                       <th>Fecha sancion</th>
-                      <th>Descripcion</th>
+                      <th>Motivo</th>
+                      <th>Estado</th>
                       <th>Acciones</th>
                     </tr>
                   </thead>
@@ -265,7 +415,17 @@ const CasosSancionados: React.FC = () => {
                           <td>{estList[0]?.nombre || '-'}</td>
                           <td>{estList[1]?.nombre || '-'}</td>
                           <td>{formatFecha(sancion.fecha_sancion)}</td>
-                          <td>{sancion.descripcion_sancion}</td>
+                          <td>{formatReasonDisplay(sancion.reason)}</td>
+                          <td>
+                            {sancion.cancelado ? (
+                              <Badge bg="secondary" pill>Cancelada</Badge>
+                            ) : (
+                              <Badge bg="danger" pill>Activa</Badge>
+                            )}
+                            {sancion.cancelado && sancion.fecha_cancelacion ? (
+                              <div className="small text-secondary mt-1">{formatFecha(sancion.fecha_cancelacion)}</div>
+                            ) : null}
+                          </td>
                           <td>
                             <Button
                               variant="outline-primary"
@@ -287,7 +447,7 @@ const CasosSancionados: React.FC = () => {
         </Col>
       </Row>
 
-      <Modal show={showDetalleModal} onHide={() => setShowDetalleModal(false)} size="lg">
+      <Modal show={showDetalleModal} onHide={() => setShowDetalleModal(false)} size="lg" scrollable>
         <Modal.Header closeButton>
           <Modal.Title>Detalle de sancion #{selectedSancion?.sancion_id}</Modal.Title>
         </Modal.Header>
@@ -298,7 +458,14 @@ const CasosSancionados: React.FC = () => {
             <>
               <p><strong>ID Caso:</strong> {selectedSancion.caso_id}</p>
               <p><strong>Fecha:</strong> {formatFecha(selectedSancion.fecha_sancion)}</p>
-              <p><strong>Descripcion:</strong> {selectedSancion.descripcion_sancion}</p>
+              <p><strong>Motivo:</strong> {formatReasonDisplay(selectedSancion?.reason)}</p>
+              <p><strong>Estado:</strong> {selectedSancion.cancelado ? 'Cancelada' : 'Activa'}</p>
+              {selectedSancion.cancelado && (
+                <p><strong>Fecha cancelación:</strong> {formatFecha(selectedSancion.fecha_cancelacion)}</p>
+              )}
+              {selectedSancion.cancelado && selectedSancion.cancelado_por && (
+                <p><strong>Cancelado por:</strong> {selectedSancion.cancelado_por}</p>
+              )}
 
               <h6 className="fw-bold mt-4 mb-3">Estudiantes involucrados</h6>
               {estudiantesList.length === 0 ? (
@@ -328,23 +495,52 @@ const CasosSancionados: React.FC = () => {
               {profesoresList.length === 0 ? (
                 <p className="text-secondary mb-0">No hay profesores registrados en esta sancion.</p>
               ) : (
-                <Table responsive className="mb-0">
-                  <tbody>
-                    {profesoresList.map((profesor) => (
-                      <tr key={profesor.profesorId}>
-                        <td>{profesor.nombre || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
+                <div className="mb-0">
+                  {profesoresList.map((profesor) => (
+                    <div key={profesor.profesorId} className="mb-3">
+                      <div className="fw-bold">{profesor.nombre || '-'}</div>
+                      <div className="mt-1">{formatReasonDisplay(selectedSancion?.reason, { showDescriptions: true, professorId: profesor.profesorId, sancionId: selectedSancion?.sancion_id })}</div>
+                    </div>
+                  ))}
+                </div>
               )}
+
+              <Accordion className="mt-4">
+                <Accordion.Item eventKey="0">
+                  <Accordion.Header>Mensajes del caso ({mensajesCaso.length})</Accordion.Header>
+                  <Accordion.Body>
+                    {mensajesCaso.length === 0 ? (
+                      <p className="text-secondary mb-0">No hay mensajes registrados en esta sancion.</p>
+                    ) : (
+                      <div className="d-flex flex-column gap-2" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                        {mensajesCaso.map((mensaje, index) => {
+                          console.log('Mostrando mensaje para usuario', mensaje);
+                          return (
+                            <div key={`${mensaje.user_id}-${mensaje.timestamp}-${index}`} className="border rounded p-3 bg-light">
+                              <div className="small text-secondary mb-1">
+                                {mensaje.username} - {formatFecha(mensaje.timestamp)}
+                              </div>
+                              <div>{mensaje.comentario}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Accordion.Body>
+                </Accordion.Item>
+              </Accordion>
             </>
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowDetalleModal(false)}>
-            Cerrar
-          </Button>
+            {selectedSancion && !selectedSancion.cancelado && currentUser?.rol_id === 1 && (
+              <Button variant="outline-danger" onClick={() => selectedSancion && handleCancelarSancion(selectedSancion.sancion_id)} disabled={cancellingSancion}>
+                {cancellingSancion ? 'Cancelando...' : 'Cancelar sanción'}
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setShowDetalleModal(false)}>
+              Cerrar
+            </Button>
         </Modal.Footer>
       </Modal>
     </div>

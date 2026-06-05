@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Card, Col, Form, Row, Spinner } from 'react-bootstrap';
-import { services } from '../../../crud';
+import { Badge, Button, Card, Col, Form, Row, Spinner } from 'react-bootstrap';
+import { services, isEvaluacionFueraDePlazo } from '../../../crud';
 import RequireRole from '../../../components/RequireRole';
 import { toast } from 'react-toastify';
 import DashboardGridView from './components/DashboardGridView';
 import CasosTable from '../Casos/CasosTable';
 import type { SedeCardData, ParaleloCardData } from './components/DashboardGridView';
-import type { Caso } from '../../../crud';
+import type { Caso, Evaluacion } from '../../../crud';
 import './Dashboard.scss';
 
 type DashboardLevel = 'sedes' | 'paralelos' | 'casos';
@@ -17,26 +17,28 @@ const Dashboard: React.FC = () => {
     const [selectedSedeName, setSelectedSedeName] = useState<string>('');
     const [selectedParaleloId, setSelectedParaleloId] = useState<number | null>(null);
     const [selectedParaleloName, setSelectedParaleloName] = useState<string>('');
-    const [selectedEvaluacionId, setSelectedEvaluacionId] = useState<number>(1); // Default evaluación
-    const [evaluaciones, setEvaluaciones] = useState<any[]>([]);
+    const [selectedEvaluacionId, setSelectedEvaluacionId] = useState<number | ''>('');
+    const [evaluaciones, setEvaluaciones] = useState<Evaluacion[]>([]);
     const [casos, setCasos] = useState<Caso[]>([]);
     const [viewingAllCasos, setViewingAllCasos] = useState(false);
-    const [paraleloFilterOptions, setParaleloFilterOptions] = useState<string[]>([]);
-    const [selectedParaleloFilter, setSelectedParaleloFilter] = useState<string>('');
     const [loadingCasos, setLoadingCasos] = useState(false);
+
+    const selectedEvaluacionIdValue = typeof selectedEvaluacionId === 'number' ? selectedEvaluacionId : null;
+    const selectedEvaluacion = evaluaciones.find((evaluacion) => evaluacion.evaluacion_id === selectedEvaluacionId);
+    const selectedEvaluacionFueraDePlazo = isEvaluacionFueraDePlazo(selectedEvaluacion?.fecha_entrega);
 
     useEffect(() => {
         loadEvaluaciones();
     }, []);
 
     useEffect(() => {
-        if (currentLevel === 'casos' && selectedParaleloId) {
-            loadCasos(selectedParaleloId, selectedEvaluacionId);
+        if (currentLevel === 'casos' && selectedParaleloId && selectedEvaluacionIdValue !== null) {
+            loadCasos(selectedParaleloId, selectedEvaluacionIdValue);
         }
-        if (viewingAllCasos) {
-            loadAllCasosForEvaluacion(selectedEvaluacionId);
+        if (viewingAllCasos && selectedEvaluacionIdValue !== null) {
+            loadAllCasosForEvaluacion(selectedEvaluacionIdValue);
         }
-    }, [currentLevel, selectedParaleloId, selectedEvaluacionId, viewingAllCasos]);
+    }, [currentLevel, selectedParaleloId, selectedEvaluacionIdValue, viewingAllCasos]);
 
     const loadAllCasosForEvaluacion = async (evaluacionId: number) => {
         setLoadingCasos(true);
@@ -45,22 +47,6 @@ const Dashboard: React.FC = () => {
             if (response.status === 200) {
                 const casosResp = response.data.casos || [];
                 setCasos(casosResp as Caso[]);
-
-                const paralelosSet = new Set<string>();
-                casosResp.forEach((c: Caso) => {
-                    const paralelosCaso = c.paralelos || [];
-                    if (paralelosCaso.length === 0) {
-                        paralelosSet.add('Sin paralelo');
-                        return;
-                    }
-
-                    paralelosCaso.forEach((p) => {
-                        if (p?.sigla_paralelo) {
-                            paralelosSet.add(p.sigla_paralelo);
-                        }
-                    });
-                });
-                setParaleloFilterOptions(Array.from(paralelosSet).sort());
             }
         } catch (error: any) {
             console.error('Error loading all casos:', error);
@@ -74,9 +60,13 @@ const Dashboard: React.FC = () => {
     const loadEvaluaciones = async () => {
         try {
             const response = await services.evaluaciones.listarEvaluaciones();
-            if (response.status === 200 && response.data.evaluaciones.length > 0) {
+            if (response.status === 200) {
                 setEvaluaciones(response.data.evaluaciones);
-                setSelectedEvaluacionId(response.data.evaluaciones[0].evaluacion_id);
+                if (response.data.evaluaciones.length > 0) {
+                    setSelectedEvaluacionId(response.data.evaluaciones[0].evaluacion_id);
+                } else {
+                    setSelectedEvaluacionId('');
+                }
             }
         } catch (error: any) {
             console.error('Error loading evaluaciones:', error);
@@ -114,7 +104,7 @@ const Dashboard: React.FC = () => {
     };
 
     const handleEvaluacionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setSelectedEvaluacionId(Number(e.target.value));
+        setSelectedEvaluacionId(e.target.value ? Number(e.target.value) : '');
         setCurrentLevel('sedes');
         setSelectedSedeId(null);
         setSelectedSedeName('');
@@ -128,7 +118,6 @@ const Dashboard: React.FC = () => {
             if (viewingAllCasos) {
                 setViewingAllCasos(false);
                 setCasos([]);
-                setSelectedParaleloFilter('');
                 setCurrentLevel('sedes');
                 return;
             }
@@ -161,14 +150,28 @@ const Dashboard: React.FC = () => {
                         </Col>
                         <Col lg={4} className="d-flex flex-column align-items-stretch gap-2">
                             <Form.Group controlId="evaluacion-select">
-                                <Form.Label className="fw-semibold mb-1">Evaluacion</Form.Label>
-                                <Form.Select value={selectedEvaluacionId} onChange={handleEvaluacionChange}>
-                                    {evaluaciones.map((evaluacion) => (
-                                        <option key={evaluacion.evaluacion_id} value={evaluacion.evaluacion_id}>
-                                            {evaluacion.nombre}
-                                        </option>
-                                    ))}
+                                <div className="d-flex align-items-center justify-content-between gap-2 mb-1 flex-wrap">
+                                    <Form.Label className="fw-semibold mb-0">Evaluacion</Form.Label>
+                                    {selectedEvaluacion && selectedEvaluacionFueraDePlazo && (
+                                        <Badge bg="danger" pill>Fuera de plazo</Badge>
+                                    )}
+                                </div>
+                                <Form.Select value={selectedEvaluacionId} onChange={handleEvaluacionChange} disabled={evaluaciones.length === 0}>
+                                    {evaluaciones.length === 0 ? (
+                                        <option value="">No hay evaluaciones disponibles</option>
+                                    ) : (
+                                        evaluaciones.map((evaluacion) => (
+                                            <option key={evaluacion.evaluacion_id} value={evaluacion.evaluacion_id}>
+                                                {evaluacion.nombre}
+                                            </option>
+                                        ))
+                                    )}
                                 </Form.Select>
+                                {selectedEvaluacion && selectedEvaluacionFueraDePlazo && selectedEvaluacion.fecha_entrega && (
+                                    <div className="small text-danger mt-1">
+                                        La fecha de entrega venció el {new Date(selectedEvaluacion.fecha_entrega).toLocaleString()}.
+                                    </div>
+                                )}
                             </Form.Group>
                             <div className="w-100 d-flex justify-content-center">
                                 <Button
@@ -195,7 +198,7 @@ const Dashboard: React.FC = () => {
                 {currentLevel === 'sedes' && (
                     <DashboardGridView
                         type="sedes"
-                        evaluacionId={selectedEvaluacionId}
+                            evaluacionId={selectedEvaluacionIdValue ?? 0}
                         onSedeClick={handleSedeClick}
                     />
                 )}
@@ -214,7 +217,7 @@ const Dashboard: React.FC = () => {
 
                         <DashboardGridView
                             type="paralelos"
-                            evaluacionId={selectedEvaluacionId}
+                            evaluacionId={selectedEvaluacionIdValue ?? 0}
                             sedeId={selectedSedeId}
                             onParaleloClick={handleParaleloClick}
                         />
@@ -228,7 +231,10 @@ const Dashboard: React.FC = () => {
                                 {viewingAllCasos ? (
                                     <>
                                         <h2 className="h4 fw-bold mb-1">Casos - Evaluación</h2>
-                                        <p className="text-secondary mb-0">Evaluación seleccionada: {evaluaciones.find(e => e.evaluacion_id === selectedEvaluacionId)?.nombre || ''}</p>
+                                        <p className="text-secondary mb-0 d-flex flex-wrap align-items-center gap-2">
+                                            <span>Evaluación seleccionada: {selectedEvaluacion?.nombre || ''}</span>
+                                            {selectedEvaluacionFueraDePlazo && <Badge bg="danger" pill>Fuera de plazo</Badge>}
+                                        </p>
                                     </>
                                 ) : (
                                     <>
@@ -239,21 +245,9 @@ const Dashboard: React.FC = () => {
                             </div>
                             <div className="d-flex gap-2 align-items-center">
                                 {viewingAllCasos ? (
-                                    <>
-                                        <Form.Select
-                                            aria-label="Filtrar por paralelo"
-                                            value={selectedParaleloFilter}
-                                            onChange={(e) => setSelectedParaleloFilter(e.target.value)}
-                                        >
-                                            <option value="">Todos los paralelos</option>
-                                            {paraleloFilterOptions.map((p) => (
-                                                <option key={p} value={p}>{p}</option>
-                                            ))}
-                                        </Form.Select>
-                                        <Button variant="secondary" onClick={handleBackToPreviousLevel}>
-                                            Volver
-                                        </Button>
-                                    </>
+                                    <Button variant="secondary" onClick={handleBackToPreviousLevel}>
+                                        Volver
+                                    </Button>
                                 ) : (
                                     <Button variant="outline-secondary" onClick={handleBackToPreviousLevel}>
                                         Volver a paralelos
@@ -269,13 +263,8 @@ const Dashboard: React.FC = () => {
                             </div>
                         ) : (
                             <CasosTable
-                                casos={selectedParaleloFilter ? casos.filter((c: any) => {
-                                    const paralelosCaso = c.paralelos || [];
-                                    if (paralelosCaso.length === 0) {
-                                        return selectedParaleloFilter === 'Sin paralelo';
-                                    }
-                                    return paralelosCaso.some((p: any) => p.sigla_paralelo === selectedParaleloFilter);
-                                }) : casos}
+                                casos={casos}
+                                enableParaleloFilter={viewingAllCasos}
                                 emptyMessage={viewingAllCasos ? "No hay casos para la evaluación seleccionada." : "No hay casos para este paralelo en la evaluación seleccionada."}
                             />
                         )}

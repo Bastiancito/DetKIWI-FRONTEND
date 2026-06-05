@@ -18,19 +18,35 @@ interface CasoSancionado {
   caso_id: number;
   estudiantes_involucrados?: Record<string, EstudianteSancionado>;
   profesores_involucrados?: Record<string, ProfesorInvolucrado>;
-  descripcion_sancion: string;
+  // Backward-compat: server may include a synthesized descripcion_sancion
+  descripcion_sancion?: string | null;
+  // New format: per-user reason mapping
+  reason?: Record<string, { motivo?: string; descripcion?: string }> | string | null;
   fecha_sancion: string | null;
+  comments?: Array<{
+    user_id: number;
+    username: string;
+    comentario: string;
+    timestamp: string;
+  }>;
+  // trazabilidad de cancelación
+  cancelado?: boolean;
+  fecha_cancelacion?: string | null;
+  cancelado_por?: number | null;
 }
 
 interface CreateCasoSancionadoData {
   caso_id: number;
-  descripcion_sancion: string;
+  // Either provide per-user reason mapping or legacy descripcion_sancion
+  descripcion_sancion?: string;
   estudiantes_involucrados?: Record<string, EstudianteSancionado>;
+  reason?: Record<string, { motivo?: string; descripcion?: string }> | string;
 }
 
 interface UpdateCasoSancionadoData {
   descripcion_sancion?: string;
   estudiantes_involucrados?: Record<string, EstudianteSancionado>;
+  reason?: Record<string, { motivo?: string; descripcion?: string }> | string;
 }
 
 interface ApiResponse<T> {

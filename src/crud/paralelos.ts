@@ -73,6 +73,26 @@ class ParalelosService {
     }
   }
 
+  async getParalelosAutenticado(): Promise<ApiResponse<Paralelo[]>> {
+    try {
+      const response = await axios.get(`${this.baseURL}/paralelos/ObtenerParalelosPorUserId`, {
+        headers: this.getAuthHeaders()
+      });
+
+      return {
+        data: response.data,
+        status: response.status,
+        message: 'Paralelos del usuario autenticado obtenidos exitosamente'
+      };
+    } catch (error: any) {
+      throw {
+        data: null,
+        status: error.response?.status || 500,
+        message: error.response?.data?.error || 'Error al obtener paralelos del usuario autenticado'
+      };
+    }
+  }
+
  
 
   async CrearListadoDeParalelos(paralelosData: CreateParaleloData[]): Promise<ApiResponse<Paralelo[]>> {

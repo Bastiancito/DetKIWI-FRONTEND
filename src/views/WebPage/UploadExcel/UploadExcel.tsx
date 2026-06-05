@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Badge, Button, Card, Col, Form, ListGroup, Modal, Row, Spinner } from 'react-bootstrap';
 import { useNavigate } from "react-router-dom";
 import { toast } from 'react-toastify';
-import { evaluacionesService, reporteService } from "../../../crud";
+import { evaluacionesService, isEvaluacionFueraDePlazo, reporteService } from "../../../crud";
 import type { Evaluacion } from "../../../crud";
 
 import "./UploadExcel.scss";
@@ -175,6 +175,9 @@ const UploadExcel: React.FC = () => {
     const [evaluaciones, setEvaluaciones] = useState<Evaluacion[]>([]);
     const [selectedEvaluacionId, setSelectedEvaluacionId] = useState<number | ''>('');
 
+    const selectedEvaluacion = evaluaciones.find((evaluacion) => evaluacion.evaluacion_id === selectedEvaluacionId);
+    const selectedEvaluacionFueraDePlazo = isEvaluacionFueraDePlazo(selectedEvaluacion?.fecha_entrega);
+
     useEffect(() => {
         fetchEvaluaciones();
     }, []);
@@ -186,6 +189,8 @@ const UploadExcel: React.FC = () => {
                 setEvaluaciones(response.data.evaluaciones);
                 if (response.data.evaluaciones.length > 0) {
                     setSelectedEvaluacionId(response.data.evaluaciones[0].evaluacion_id);
+                } else {
+                    setSelectedEvaluacionId('');
                 }
             }
         } catch (error: any) {
@@ -397,7 +402,12 @@ const UploadExcel: React.FC = () => {
                                 <Row className="g-4">
                                     <Col md={6}>
                                         <Form.Group controlId="evaluacion">
-                                            <Form.Label className="fw-semibold">Evaluacion</Form.Label>
+                                            <div className="d-flex align-items-center justify-content-between gap-2 mb-1 flex-wrap">
+                                                <Form.Label className="fw-semibold mb-0">Evaluacion</Form.Label>
+                                                {selectedEvaluacion && selectedEvaluacionFueraDePlazo && (
+                                                    <Badge bg="danger" pill>Fuera de plazo</Badge>
+                                                )}
+                                            </div>
                                             <Form.Select
                                                 value={selectedEvaluacionId}
                                                 onChange={(e) => setSelectedEvaluacionId(Number(e.target.value))}
@@ -413,6 +423,11 @@ const UploadExcel: React.FC = () => {
                                                     ))
                                                 )}
                                             </Form.Select>
+                                            {selectedEvaluacion && selectedEvaluacionFueraDePlazo && selectedEvaluacion.fecha_entrega && (
+                                                <div className="small text-danger mt-1">
+                                                    Fecha de entrega vencida: {new Date(selectedEvaluacion.fecha_entrega).toLocaleString()}
+                                                </div>
+                                            )}
                                         </Form.Group>
                                     </Col>
 

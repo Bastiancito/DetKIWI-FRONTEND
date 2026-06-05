@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Alert, Badge, Breadcrumb, Button, Card, Col, Dropdown, Form, Row, Spinner } from 'react-bootstrap';
-import { services } from '../../../crud';
+import { services, isEvaluacionFueraDePlazo } from '../../../crud';
 import { toast } from 'react-toastify';
-import type { Caso } from '../../../crud';
+import type { Caso, Evaluacion } from '../../../crud';
 import type { Paralelo, Usuario } from '../interfaces';
 import CasosTable from '../Casos/CasosTable';
 import CreateParaleloModal from './components/CreateParaleloModal';
 import UpdateParaleloModal from './components/UpdateParaleloModal';
 import RequireRole from '../../../components/RequireRole';
+import { getErrorMessage, isSuccessfulResponse } from '../../../crud/responseHelpers';
 
 interface ParaleloStatsData {
 	paralelo: string;
@@ -58,13 +59,14 @@ const Paralelos: React.FC = () => {
 	const isProfesor = currentUser?.rol_id === 2;
 	const canCreateParalelo = currentUser?.rol_id === 1;
 	const currentUserId = currentUser?.id ? Number(currentUser.id) : null;
+	const useUserScopedEndpoints = currentUser?.rol_id === 2;
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
 	const [paralelosCards, setParalelosCards] = useState<ParaleloCardItem[]>([]);
 	const [paralelosSinSede, setParalelosSinSede] = useState<ParaleloCardItem[]>([]);
 	const [availableParalelos, setAvailableParalelos] = useState<{ paralelo_id: number; nombre: string }[]>([]);
 	const [selectedParaleloIdsFilter, setSelectedParaleloIdsFilter] = useState<number[]>([]);
-	const [evaluaciones, setEvaluaciones] = useState<Array<{ evaluacion_id: number; nombre: string }>>([]);
+	const [evaluaciones, setEvaluaciones] = useState<Evaluacion[]>([]);
 	const [selectedEvaluacionId, setSelectedEvaluacionId] = useState<number | ''>('');
 	const [selectedParalelo, setSelectedParalelo] = useState<ParaleloCardItem | null>(null);
 	const [casosParalelo, setCasosParalelo] = useState<Caso[]>([]);
@@ -74,6 +76,8 @@ const Paralelos: React.FC = () => {
 	const [showCreateModal, setShowCreateModal] = useState(false);
 	const [showUpdateModal, setShowUpdateModal] = useState(false);
 	const [selectedParaleloIdForUpdate, setSelectedParaleloIdForUpdate] = useState<number | null>(null);
+	const selectedEvaluacion = evaluaciones.find((evaluacion) => evaluacion.evaluacion_id === selectedEvaluacionId);
+	const selectedEvaluacionFueraDePlazo = isEvaluacionFueraDePlazo(selectedEvaluacion?.fecha_entrega);
 
 	const totalParalelos = paralelosCards.length;
 
@@ -81,9 +85,13 @@ const Paralelos: React.FC = () => {
 		const loadEvaluaciones = async () => {
 			try {
 				const response = await services.evaluaciones.listarEvaluaciones();
-				if (response.status === 200 && response.data.evaluaciones.length > 0) {
+				if (response.status === 200) {
 					setEvaluaciones(response.data.evaluaciones);
-					setSelectedEvaluacionId(response.data.evaluaciones[0].evaluacion_id);
+					if (response.data.evaluaciones.length > 0) {
+						setSelectedEvaluacionId(response.data.evaluaciones[0].evaluacion_id);
+					} else {
+						setSelectedEvaluacionId('');
+					}
 				}
 			} catch {
 				toast.error('Error al cargar evaluaciones');
@@ -93,9 +101,9 @@ const Paralelos: React.FC = () => {
 		loadEvaluaciones();
 	}, []);
 
-	const loadParalelosWithStats = async () => {
+    const loadParalelosWithStats = async (): Promise<boolean> => {
 		if (!selectedEvaluacionId) {
-			return;
+			return false;
 		}
 
 		setLoading(true);
@@ -103,9 +111,17 @@ const Paralelos: React.FC = () => {
 
 		try {
 			const [paralelosResponse, statsResponse] = await Promise.all([
-				services.paralelos.getAllParalelos(),
-				services.casos.getStatsCasosForParalelosByEvaluacionId(selectedEvaluacionId)
+				useUserScopedEndpoints
+					? services.paralelos.getParalelosAutenticado()
+					: services.paralelos.getAllParalelos(),
+				useUserScopedEndpoints
+					? services.casos.getStatsCasosForParalelosByEvaluacionIdMisParalelos(selectedEvaluacionId)
+					: services.casos.getStatsCasosForParalelosByEvaluacionId(selectedEvaluacionId)
 			]);
+
+			if (!isSuccessfulResponse(paralelosResponse) || !isSuccessfulResponse(statsResponse)) {
+				throw new Error('Error al obtener paralelos y estadísticas');
+			}
 
 			const paralelos = paralelosResponse.data as unknown as Paralelo[];
 			const statsList = statsResponse.data as unknown as ParaleloStatsData[];
@@ -129,56 +145,34 @@ const Paralelos: React.FC = () => {
 			// expose available paralelos for admin filter UI
 			setAvailableParalelos(cardsData.map((p) => ({ paralelo_id: p.paralelo_id, nombre: p.nombre })));
 
-			// If user is profesor (rol_id == 2) only show cards for the paralelos
-			// that were returned in the login `user.paralelos` payload.
-			const userParaleloIds: number[] = (currentUser?.paralelos || []).map((p: any) => Number(p.paralelo_id));
+			const assignedIds = new Set<number>();
+			if (currentUserId) {
+				cardsData.forEach((par) => {
+					if (par.encargados.some((usuario) => usuario.user_id === currentUserId) || par.usuario?.user_id === currentUserId) {
+						assignedIds.add(par.paralelo_id);
+					}
+				});
+			}
 
-			if (isProfesor && userParaleloIds.length > 0) {
-				// For professors: consider only the paralelos returned in the user payload
-				const userCards = cardsData.filter((par) => userParaleloIds.includes(par.paralelo_id));
-				// count sin sede among the user's paralelos
-				setParalelosSinSede(userCards.filter((par) => !par.sede_id));
+			setParalelosSinSede(cardsData.filter((paralelo) => !paralelo.sede_id));
 
-				// partition into: a cargo, con casos, sin casos
-				const assignedIdsUser = new Set<number>();
-				if (currentUserId) {
-					userCards.forEach((par) => {
-						if (par.encargados.some((usuario) => usuario.user_id === currentUserId) || par.usuario?.user_id === currentUserId) {
-							assignedIdsUser.add(par.paralelo_id);
-						}
-					});
-				}
-
-				const assignedUserCards = userCards.filter((par) => assignedIdsUser.has(par.paralelo_id));
-				const withCasesUserCards = userCards.filter((par) => !assignedIdsUser.has(par.paralelo_id) && par.total_casos > 0);
-				const withoutCasesUserCards = userCards.filter((par) => !assignedIdsUser.has(par.paralelo_id) && par.total_casos === 0);
-
-				setParalelosCards([...assignedUserCards, ...withCasesUserCards, ...withoutCasesUserCards]);
+			if (useUserScopedEndpoints) {
+				setParalelosCards(cardsData);
 			} else {
-				// For non-professor users show ALL paralelos and order them hierarchically:
-				// a cargo, con casos para la evaluación, sin casos
-				setParalelosSinSede(cardsData.filter((paralelo) => !paralelo.sede_id));
-
-				const assignedIds = new Set<number>();
-				if (currentUserId) {
-					cardsData.forEach((par) => {
-						if (par.encargados.some((usuario) => usuario.user_id === currentUserId) || par.usuario?.user_id === currentUserId) {
-							assignedIds.add(par.paralelo_id);
-						}
-					});
-				}
-
 				const assignedCards = cardsData.filter((par) => assignedIds.has(par.paralelo_id));
 				const withCasesCards = cardsData.filter((par) => !assignedIds.has(par.paralelo_id) && par.total_casos > 0);
 				const withoutCasesCards = cardsData.filter((par) => !assignedIds.has(par.paralelo_id) && par.total_casos === 0);
 
 				setParalelosCards([...assignedCards, ...withCasesCards, ...withoutCasesCards]);
 			}
-		} catch {
+		} catch (error) {
 			setError('Error al obtener paralelos y estadísticas');
+			return false;
 		} finally {
 			setLoading(false);
 		}
+
+		return true;
 	};
 
 	useEffect(() => {
@@ -279,7 +273,8 @@ const Paralelos: React.FC = () => {
 		setError('');
 
 		try {
-			const response = await services.evaluaciones.obtenerCasosEvaluacion(selectedEvaluacionId);
+			// When viewing "mis casos" from this view, use the user-scoped endpoint
+			const response = await services.casos.getMisCasosByEvaluacionId(selectedEvaluacionId);
 			if (response.status === 200) {
 				setCasosEvaluacion(response.data.casos || []);
 			}
@@ -292,15 +287,23 @@ const Paralelos: React.FC = () => {
 	};
 
 	const handleParaleloCreated = async () => {
-		await loadParalelosWithStats();
-		toast.success('Listado de paralelos creado correctamente');
+		const ok = await loadParalelosWithStats();
+		if (ok) {
+			toast.success('Listado de paralelos creado correctamente');
+		} else {
+			toast.error(getErrorMessage(null, 'Error al crear el listado de paralelos'));
+		}
 	};
 
 	const handleParaleloUpdated = async () => {
-		await loadParalelosWithStats();
-		setSelectedParalelo(null);
-		setCasosParalelo([]);
-		toast.success('Paralelo actualizado correctamente');
+		const ok = await loadParalelosWithStats();
+		if (ok) {
+			setSelectedParalelo(null);
+			setCasosParalelo([]);
+			toast.success('Paralelo actualizado correctamente');
+		} else {
+			toast.error(getErrorMessage(null, 'Error al actualizar el paralelo'));
+		}
 	};
 
 	const handleVerTodosLosCasos = async () => {
@@ -408,6 +411,11 @@ const Paralelos: React.FC = () => {
 							<div>
 								<span className="badge rounded-pill text-bg-light border px-3 py-2 mb-3">Dashboard</span>
 								<h1 className="page-title h2 fw-bold mb-2">Mis casos</h1>
+								{selectedEvaluacion && selectedEvaluacionFueraDePlazo && (
+									<Badge bg="danger" pill className="fs-6 px-3 py-2">
+										La evaluación seleccionada ya venció
+									</Badge>
+								)}
 							</div>
 							<div className="d-flex flex-column flex-sm-row gap-2 align-items-sm-center">
 								<Badge bg="primary" pill className="fs-6 px-3 py-2 align-self-start">
@@ -435,7 +443,12 @@ const Paralelos: React.FC = () => {
 							<Row className="g-3 align-items-end">
 								<Col xs={12} md={6} lg={4}>
 									<Form.Group controlId="paralelos-evaluacion">
-										<Form.Label className="fw-semibold">Evaluación</Form.Label>
+										<div className="d-flex align-items-center justify-content-between gap-2 mb-1 flex-wrap">
+											<Form.Label className="fw-semibold mb-0">Evaluación</Form.Label>
+											{selectedEvaluacion && selectedEvaluacionFueraDePlazo && (
+												<Badge bg="danger" pill>Fuera de plazo</Badge>
+											)}
+										</div>
 										<Form.Select
 											value={selectedEvaluacionId}
 											onChange={(e) => {
@@ -453,6 +466,11 @@ const Paralelos: React.FC = () => {
 												</option>
 											))}
 										</Form.Select>
+											{selectedEvaluacion && selectedEvaluacionFueraDePlazo && selectedEvaluacion.fecha_entrega && (
+												<div className="small text-danger mt-1">
+													Fecha de entrega vencida: {new Date(selectedEvaluacion.fecha_entrega).toLocaleString()}
+												</div>
+											)}
 
 									</Form.Group>
 								</Col>
@@ -552,6 +570,7 @@ const Paralelos: React.FC = () => {
 								) : (
 									<CasosTable
 										casos={casosEvaluacionFiltrados}
+										enableParaleloFilter
 										emptyMessage="No hay casos para mostrar en la evaluación seleccionada."
 									/>
 								)}

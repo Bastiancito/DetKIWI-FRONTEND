@@ -15,6 +15,7 @@ const Navbar: React.FC<NavbarProps> = ({ className = '' }) => {
   
   const currentUser = authService.getCurrentUser();
   const isAuthenticated = authService.isAuthenticated();
+  type NavigationItem = (typeof NAVIGATION_ITEMS)[number];
 
   const handleLogout = () => {
     authService.logout();
@@ -35,13 +36,9 @@ const Navbar: React.FC<NavbarProps> = ({ className = '' }) => {
         <BootstrapNavbar.Collapse id="app-navbar-nav">
           <Nav className="me-auto gap-lg-2 py-3 py-lg-0">
             {(() => {
-              // Determine which navigation items to show based on backend permissions or role
-              let items = NAVIGATION_ITEMS as typeof NAVIGATION_ITEMS;
-
-              if (currentUser && currentUser.rol_id === 2) {
-                // profesor: only show "Mis casos" and "Casos sancionados"
-                items = NAVIGATION_ITEMS.filter((it) => it.name === 'Mis casos' || it.name === 'Casos sancionados' || it.name === 'Paralelos');
-              }
+              const items: NavigationItem[] = currentUser && currentUser.rol_id === 2
+                ? NAVIGATION_ITEMS.filter((it) => it.name === 'Casos sancionados' || it.name === 'Paralelos')
+                : [...NAVIGATION_ITEMS];
 
               return items.map((item) => (
                 <Nav.Link

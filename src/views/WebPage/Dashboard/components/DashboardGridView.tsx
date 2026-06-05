@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Badge, Card, Col, Row, Spinner } from 'react-bootstrap';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Badge, Card, Col, Form, Row, Spinner } from 'react-bootstrap';
 import { services } from '../../../../crud';
 import { toast } from 'react-toastify';
 import './DashboardGridView.scss';
@@ -48,6 +48,8 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
     const [loading, setLoading] = useState(true);
     const [sedesData, setSedesData] = useState<any[]>([]);
     const [paralelosData, setParalelosData] = useState<ParaleloCardData[]>([]);
+    const [selectedParaleloStatusFilter, setSelectedParaleloStatusFilter] = useState<'todos' | 'pendiente' | 'completado'>('todos');
+    const [selectedParaleloIdFilter, setSelectedParaleloIdFilter] = useState<string>('todos');
 
     useEffect(() => {
         fetchData();
@@ -56,6 +58,26 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
     useEffect(() => {
         console.log('Paralelos data:', paralelosData);
     }, [paralelosData]);
+
+    const paralelosFiltrados = useMemo(() => {
+        return paralelosData.filter((paralelo) => {
+            const completado = paralelo.total_casos > 0 && paralelo.total_casos_pendientes === 0;
+
+            if (selectedParaleloStatusFilter === 'completado' && !completado) {
+                return false;
+            }
+
+            if (selectedParaleloStatusFilter === 'pendiente' && completado) {
+                return false;
+            }
+
+            if (selectedParaleloIdFilter !== 'todos' && String(paralelo.paralelo_id) !== selectedParaleloIdFilter) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [paralelosData, selectedParaleloStatusFilter, selectedParaleloIdFilter]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -171,6 +193,7 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
     const renderParaleloCard = (paralelo: ParaleloCardData) => {
         console.log('Paralelo:', paralelo);
         const displayedUser = paralelo.usuario?.user_id ? paralelo.usuario : paralelo.usuarios_asignados?.[0];
+        const completado = paralelo.total_casos > 0 && paralelo.total_casos_pendientes === 0;
 
         return (
             <Col key={paralelo.paralelo_id} md={6} xl={4}>
@@ -204,6 +227,14 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
                         <span className="stat-label">Porcentaje resuelto</span>
                         <span className="stat-value">{calculatePercentage(paralelo.total_casos_resueltos, paralelo.total_casos)}%</span>
                     </div>
+                    <div className="stat-row stat-highlight">
+                        <span className="stat-label">Estado del paralelo</span>
+                        <span className="stat-value">
+                            <Badge bg={completado ? 'success' : 'warning'} text={completado ? 'light' : 'dark'} pill>
+                                {completado ? 'Completado' : 'Pendiente'}
+                            </Badge>
+                        </span>
+                    </div>
                     {/* Mostrar solo el encargado del paralelo si está disponible en `paralelo.usuario`.
                         Si no existe, mostrar la lista `usuarios_asignados` (fallback). */}
                     {displayedUser && (
@@ -235,20 +266,54 @@ const DashboardGridView: React.FC<DashboardGridViewProps> = ({
 
     return (
         <div className="dashboard-grid-view">
+            {type === 'paralelos' && paralelosData.length > 0 && (
+                <Row className="g-3 mb-4 align-items-end">
+                    <Col xs={12} md={6} lg={4}>
+                        <Form.Group controlId="filtro-paralelo-estado-dashboard">
+                            <Form.Label className="fw-semibold">Filtrar estado del paralelo</Form.Label>
+                            <Form.Select
+                                value={selectedParaleloStatusFilter}
+                                onChange={(e) => setSelectedParaleloStatusFilter(e.target.value as 'todos' | 'pendiente' | 'completado')}
+                            >
+                                <option value="todos">Todos</option>
+                                <option value="completado">Completados</option>
+                                <option value="pendiente">Pendientes</option>
+                            </Form.Select>
+                        </Form.Group>
+                    </Col>
+                    <Col xs={12} md={6} lg={4}>
+                        <Form.Group controlId="filtro-paralelo-nombre-dashboard">
+                            <Form.Label className="fw-semibold">Filtrar por paralelo</Form.Label>
+                            <Form.Select
+                                value={selectedParaleloIdFilter}
+                                onChange={(e) => setSelectedParaleloIdFilter(e.target.value)}
+                            >
+                                <option value="todos">Todos los paralelos</option>
+                                {paralelosData.map((paralelo) => (
+                                    <option key={paralelo.paralelo_id} value={paralelo.paralelo_id}>
+                                        {paralelo.paralelo}
+                                    </option>
+                                ))}
+                            </Form.Select>
+                        </Form.Group>
+                    </Col>
+                </Row>
+            )}
+
             {type === 'sedes' && sedesData.length > 0 && (
                 <Row className="g-4">
                     {sedesData.map(renderSedeCard)}
                 </Row>
             )}
 
-            {type === 'paralelos' && paralelosData.length > 0 && (
+            {type === 'paralelos' && paralelosFiltrados.length > 0 && (
                 <Row className="g-4">
-                    {paralelosData.map(renderParaleloCard)}
+                    {paralelosFiltrados.map(renderParaleloCard)}
                 </Row>
             )}
 
             {((type === 'sedes' && sedesData.length === 0) || 
-              (type === 'paralelos' && paralelosData.length === 0)) && !loading && (
+              (type === 'paralelos' && paralelosFiltrados.length === 0)) && !loading && (
                 <Card className="border-0 bg-body-tertiary text-center py-5">
                     <Card.Body>
                         <div className="display-6 mb-3">Datos no disponibles</div>

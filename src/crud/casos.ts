@@ -29,8 +29,14 @@ interface Caso {
   lineas: number | null;
   url_moss: string | null;
   closed: boolean;
+  in_process?: boolean;
   sancion?: boolean | null;
+  // reason can be a per-user mapping: { userId: { motivo: string, descripcion: string } }
+  reason?: Record<string, { motivo?: string; descripcion?: string }> | string | null;
+  motivo_sancion?: Record<string, { motivo?: string; descripcion?: string }> | string | null;
+  descripcion_sancion?: string | null; // backward-compat synthesized field
   caso_metadata?: any;
+  cantidad_usuarios_asignados?: number;
   paralelos?: Array<{
     paralelo_id: number;
     sigla_paralelo: string;
@@ -40,6 +46,7 @@ interface Caso {
   estudiantes?: EstudianteCaso[];
   usuarios_asignados?: UsuarioAsignado[];
   comentarios_profes?: ComentarioProfesor[];
+  decisiones_profes?: Record<string, boolean | null | undefined>;
 }
 
 interface CasoDetalle extends Caso {
@@ -58,6 +65,8 @@ interface ApiResponse<T> {
   status: number;
   message?: string;
 }
+
+const DEFAULT_SANCTION_REASON = 'Amonestación por plagio';
 
 class CasosService {
   private baseURL: string;
@@ -142,7 +151,7 @@ class CasosService {
 
   async updateEstadoCaso(
     casoId: number,
-    estado: { sancion: boolean; descripcion_sancion?: string }
+    estado: { sancion: boolean; descripcion_sancion?: string; forzar?: boolean; reason?: any }
   ): Promise<ApiResponse<any>> {
     try {
       const response = await axios.put(`${this.baseURL}/casos/ActualizarEstadoCaso/${casoId}`, 
@@ -164,15 +173,81 @@ class CasosService {
     }
   }
 
-  async indultarCaso(casoId: number): Promise<ApiResponse<any>> {
-    return this.updateEstadoCaso(casoId, { sancion: false });
+  // New API wrappers: prefer POST endpoints for clarity
+  async postSancionarCaso(casoId: number, payload: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await axios.post(`${this.baseURL}/casos/SancionarCaso/${casoId}`, payload, {
+        headers: this.getAuthHeaders()
+      });
+
+      return { data: response.data, status: response.status, message: 'Sanción enviada' };
+    } catch (error: any) {
+      throw { data: null, status: error.response?.status || 500, message: error.response?.data?.msg || error.response?.data?.error || 'Error al sancionar' };
+    }
   }
 
-  async sancionarCaso(casoId: number, descripcionSancion: string): Promise<ApiResponse<any>> {
-    return this.updateEstadoCaso(casoId, {
-      sancion: true,
-      descripcion_sancion: descripcionSancion,
-    });
+  async postIndultarCaso(casoId: number, payload: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await axios.post(`${this.baseURL}/casos/IndultarCaso/${casoId}`, payload, {
+        headers: this.getAuthHeaders()
+      });
+
+      return { data: response.data, status: response.status, message: 'Indulto enviado' };
+    } catch (error: any) {
+      throw { data: null, status: error.response?.status || 500, message: error.response?.data?.msg || error.response?.data?.error || 'Error al indultar' };
+    }
+  }
+
+  async postCambiarOpinion(casoId: number, payload: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await axios.post(`${this.baseURL}/casos/CambiarOpinion/${casoId}`, payload, {
+        headers: this.getAuthHeaders()
+      });
+
+      return { data: response.data, status: response.status, message: 'Opinión cambiada' };
+    } catch (error: any) {
+      throw { data: null, status: error.response?.status || 500, message: error.response?.data?.msg || error.response?.data?.error || 'Error al cambiar opinion' };
+    }
+  }
+
+  async postForzarSancion(casoId: number, payload: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await axios.post(`${this.baseURL}/casos/ForzarSancion/${casoId}`, payload, {
+        headers: this.getAuthHeaders()
+      });
+
+      return { data: response.data, status: response.status, message: 'Forzar sanción enviada' };
+    } catch (error: any) {
+      throw { data: null, status: error.response?.status || 500, message: error.response?.data?.msg || error.response?.data?.error || 'Error al forzar sanción' };
+    }
+  }
+
+  async postForzarIndulto(casoId: number, payload: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await axios.post(`${this.baseURL}/casos/ForzarIndulto/${casoId}`, payload, {
+        headers: this.getAuthHeaders()
+      });
+
+      return { data: response.data, status: response.status, message: 'Forzar indulto enviado' };
+    } catch (error: any) {
+      throw { data: null, status: error.response?.status || 500, message: error.response?.data?.msg || error.response?.data?.error || 'Error al forzar indulto' };
+    }
+  }
+
+  async indultarCaso(casoId: number): Promise<ApiResponse<any>> {
+    return this.postIndultarCaso(casoId, { reason: null });
+  }
+
+  async sancionarCaso(casoId: number, descripcionSancion: string, userId?: number): Promise<ApiResponse<any>> {
+    const payload: any = { sancion: true };
+    if (userId != null) {
+      payload.reason = { [String(userId)]: { motivo: descripcionSancion, descripcion: descripcionSancion } };
+    } else {
+      // fallback to legacy field
+      payload.descripcion_sancion = descripcionSancion;
+      payload.reason = DEFAULT_SANCTION_REASON;
+    }
+    return this.postSancionarCaso(casoId, payload);
   }
 
   async asignarUsuariosCaso(casoId: number, userIds: number[]): Promise<ApiResponse<any>> {
@@ -338,6 +413,37 @@ class CasosService {
         data: null,
         status: error.response?.status || 500,
         message: error.response?.data?.msg || error.response?.data?.error || 'Error al obtener estadísticas de casos por paralelos y evaluación'
+      };
+    }
+  }
+
+  async getStatsCasosForParalelosByEvaluacionIdMisParalelos(evaluacionId: number): Promise<ApiResponse<Array<{
+    paralelo: string;
+    paralelo_id: number;
+    total_casos: number;
+    total_casos_pendientes: number;
+    total_casos_resueltos: number;
+    usuarios_asignados: Array<{
+      user_id: number;
+      username: string;
+      email: string;
+    }>;
+  }>>> {
+    try {
+      const response = await axios.get(`${this.baseURL}/casos/ObtenerStatsCasosPorParalelosAndEvaluacionIdMisParalelos/${evaluacionId}`, {
+        headers: this.getAuthHeaders()
+      });
+
+      return {
+        data: response.data,
+        status: response.status,
+        message: 'Estadísticas de casos por paralelos del usuario obtenidas exitosamente'
+      };
+    } catch (error: any) {
+      throw {
+        data: null,
+        status: error.response?.status || 500,
+        message: error.response?.data?.msg || error.response?.data?.error || 'Error al obtener estadísticas de casos por paralelos del usuario'
       };
     }
   }
