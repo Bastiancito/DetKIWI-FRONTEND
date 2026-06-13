@@ -19,6 +19,7 @@ interface ReportUploadResponse {
     paralelos_creados_sin_sede?: string[];
     casos_sin_encargado_count?: number;
     paralelos_sin_encargado_count?: number;
+    
     casos_sin_encargado?: Array<{
         fila_original: number | string;
         similitud: number;
@@ -93,7 +94,8 @@ interface ReportUploadResponse {
         casos_invalidos: number;
         detalles_casos_invalidos: Array<{
             fila: number | string;
-            errores: string[];
+            errores?: string[];
+            motivo?: string;
         }>;
     };
     advertencias_sin_encargado?: {
@@ -516,6 +518,7 @@ const UploadExcel: React.FC = () => {
                                             </Alert>
                                         )}
 
+
                                         <Row className="g-4">
                                             <Col xs={12} xl={6}>
                                                 <Card className="surface-card border-0 h-100">
@@ -605,6 +608,37 @@ const UploadExcel: React.FC = () => {
                                                 </Card>
                                             </Col>
                                         </Row>
+
+                                        {reportResult.advertencias && reportResult.advertencias.detalles_casos_invalidos && reportResult.advertencias.detalles_casos_invalidos.length > 0 && (
+                                            <Card className="surface-card border-0 border-start border-danger border-4 mt-4">
+                                                <Card.Body className="p-4">
+                                                    <div className="d-flex justify-content-between align-items-center gap-3 mb-3">
+                                                        <h2 className="h5 fw-bold mb-0 text-danger">Casos Inválidos / Advertencias</h2>
+                                                        <Badge bg="danger" pill>{reportResult.advertencias.casos_invalidos}</Badge>
+                                                    </div>
+
+                                                    <ListGroup variant="flush" className="border rounded">
+                                                        {reportResult.advertencias.detalles_casos_invalidos.slice(0, 10).map((adv, index) => (
+                                                            <ListGroup.Item key={`adv-${adv.fila}-${index}`} className="d-flex justify-content-between align-items-start gap-3">
+                                                                <div>
+                                                                    <div className="fw-semibold text-danger">Error en Fila {adv.fila}</div>
+                                                                    <div className="text-secondary small mt-1">
+                                                                        {adv.motivo || (adv.errores ? adv.errores.join(', ') : 'Motivo no especificado por el servidor.')}
+                                                                    </div>
+                                                                </div>
+                                                                <Badge bg="outline-danger" className="text-danger border border-danger">Omitido</Badge>
+                                                            </ListGroup.Item>
+                                                        ))}
+                                                    </ListGroup>
+
+                                                    {reportResult.advertencias.detalles_casos_invalidos.length > 10 && (
+                                                        <div className="text-secondary small mt-3">
+                                                            Mostrando primeros 10 de {reportResult.advertencias.detalles_casos_invalidos.length} casos con errores.
+                                                        </div>
+                                                    )}
+                                                </Card.Body>
+                                            </Card>
+                                        )}
 
                                         {casosSinEncargadoPreview.length > 0 && (
                                             <Card className="surface-card border-0">
@@ -752,6 +786,8 @@ const UploadExcel: React.FC = () => {
                             )}
                         </div>
                     )}
+
+                    
                 </Modal.Body>
                 <Modal.Footer>
                     <Button variant="outline-secondary" onClick={handleCancelConfirmation} disabled={reportLoading}>
