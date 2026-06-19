@@ -452,7 +452,7 @@ const DetallesCaso: React.FC<DetallesCasoProps> = ({ caso, onClose, onCasoUpdate
 
             const payload: any = reasonPayload ? { sancion: true, reason: reasonPayload } : { sancion: true };
             const currentDecisionLocal = detalleCaso.decisiones_profes ? detalleCaso.decisiones_profes[String(currentUserId)] : undefined;
-            const response = detalleCaso.in_process === true && currentDecisionLocal !== detalleCaso.sancion
+            const response = detalleCaso.in_process === true && currentDecisionLocal === false
                 ? await services.casos.postCambiarOpinion(detalleCaso.caso_id, payload)
                 : coordinatorForceOnlyMode
                     ? await services.casos.postForzarSancion(detalleCaso.caso_id, payload)
